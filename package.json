@@ -1,0 +1,35 @@
+{
+  "name": "uma_service",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "node node_modules/prisma/build/index.js generate && next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:push": "node node_modules/prisma/build/index.js db push",
+    "db:studio": "node node_modules/prisma/build/index.js studio",
+    "db:seed": "npx tsx prisma/seed.ts",
+    "print-agent": "tsx --env-file=.env scripts/print-agent.ts",
+    "postinstall": "node node_modules/prisma/build/index.js generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "iron-session": "^8.0.4",
+    "next": "16.2.10",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "prisma": "^6.19.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

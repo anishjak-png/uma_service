@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id        String    @id @default(cuid())
+  name      String?
+  mobile    String    @unique
+  address   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  jobCards  JobCard[]
+}
+
+enum JobStatus {
+  Received
+  Diagnosing
+  InRepair
+  Ready
+  Delivered
+  Closed
+}
+
+model LookupOption {
+  id       String @id @default(cuid())
+  category String
+  value    String
+
+  @@unique([category, value])
+  @@index([category])
+}
+
+model Technician {
+  id                 String                @id @default(cuid())
+  name               String                @unique
+  active             Boolean               @default(true)
+  assignedJobs       JobCard[]             @relation("AssignedTechnician")
+  attendedJobs       JobCard[]             @relation("AttendedTechnician")
+  applianceMappings  ApplianceTechnician[]
+  createdAt          DateTime              @default(now())
+}
+
+model ApplianceTechnician {
+  id            String     @id @default(cuid())
+  applianceType String     @unique
+  technicianId  String
+  technician    Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+}
+
+model JobCard {
+  id                   String          @id @default(cuid())
+  jobNumber            String          @unique
+  customerId           String
+  customer             Customer        @relation(fields: [customerId], references: [id])
+  applianceType        String
+  brand                String?
+  model                String?
+  complaint            String
+  status               JobStatus       @default(Received)
+  finalCost            Float?
+  internalNotes        String?
+  receivedAt           DateTime        @default(now())
+  readyAt              DateTime?
+  deliveredAt          DateTime?
+  deliverySignature    String?
+  deliveredBy          String?
+  receiptSlipReturned  Boolean         @default(false)
+  deliveryNote         String?
+  readyWhatsappSent    Boolean         @default(false)
+  readyWhatsappSentAt  DateTime?
+  createdBy            String?
+  assignedTechnicianId String?
+  assignedTechnician   Technician?     @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  attendedTechnicianId String?
+  attendedTechnician   Technician?     @relation("AttendedTechnician", fields: [attendedTechnicianId], references: [id])
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  statusHistory        StatusHistory[]
+  printJobs            PrintJob[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([assignedTechnicianId])
+}
+
+model StatusHistory {
+  id        String    @id @default(cuid())
+  jobCardId String
+  jobCard   JobCard   @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  status    JobStatus
+  note      String?
+  changedBy String?
+  changedAt DateTime  @default(now())
+
+  @@index([jobCardId])
+}
+
+model JobSequence {
+  year    Int @id
+  lastNum Int @default(0)
+}
+
+enum PrintJobStatus {
+  Pending
+  Printing
+  Done
+  Failed
+}
+
+model PrintJob {
+  id        String         @id @default(cuid())
+  jobCardId String
+  jobCard   JobCard        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  type      String         @default("receipt")
+  status    PrintJobStatus @default(Pending)
+  attempts  Int            @default(0)
+  lastError String?
+  createdAt DateTime       @default(now())
+  printedAt DateTime?
+
+  @@index([status, createdAt])
+}
