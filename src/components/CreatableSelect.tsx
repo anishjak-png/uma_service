@@ -12,6 +12,9 @@ interface CreatableSelectProps {
   required?: boolean;
   placeholder?: string;
   onSelect?: (value: string) => void;
+  /** When provided, skips the per-category lookup fetch. */
+  options?: string[];
+  onOptionsChange?: (category: LookupCategory, options: string[]) => void;
 }
 
 export function CreatableSelect({
@@ -22,21 +25,28 @@ export function CreatableSelect({
   required,
   placeholder = "Select or add new",
   onSelect,
+  options: externalOptions,
+  onOptionsChange,
 }: CreatableSelectProps) {
-  const [options, setOptions] = useState<string[]>([]);
+  const [internalOptions, setInternalOptions] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const options = externalOptions ?? internalOptions;
+
   const loadOptions = useCallback(async () => {
     const res = await fetch(`/api/lookups?category=${category}`);
     const data = await res.json();
-    setOptions(data.map((o: { value: string }) => o.value));
+    const values = data.map((o: { value: string }) => o.value);
+    setInternalOptions(values);
+    return values;
   }, [category]);
 
   useEffect(() => {
+    if (externalOptions != null) return;
     loadOptions();
-  }, [loadOptions]);
+  }, [externalOptions, loadOptions]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -58,7 +68,13 @@ export function CreatableSelect({
       body: JSON.stringify({ category, value: trimmed }),
     });
 
-    await loadOptions();
+    if (onOptionsChange) {
+      const next = [...options, trimmed].sort((a, b) => a.localeCompare(b));
+      onOptionsChange(category, next);
+    } else {
+      await loadOptions();
+    }
+
     onChange(trimmed);
     onSelect?.(trimmed);
     setOpen(false);

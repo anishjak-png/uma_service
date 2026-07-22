@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { SHOP_NAME } from "@/lib/constants";
-
-type StaffRole = "reception" | "technician" | "admin";
+import { useAuth } from "./AuthProvider";
 
 const receptionQuickActions = [
   { href: "/dashboard", label: "Home" },
@@ -31,19 +29,7 @@ const adminLinks = [
 export function AppNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const [role, setRole] = useState<StaffRole | null>(null);
-  const [technicianName, setTechnicianName] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.isLoggedIn) {
-          setRole(data.role);
-          setTechnicianName(data.technicianName ?? null);
-        }
-      });
-  }, []);
+  const { role, technicianName } = useAuth();
 
   const links = role === "technician" ? technicianLinks : adminLinks;
   const showReceptionQuickActions = role === "reception" || role === null;

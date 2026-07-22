@@ -13,6 +13,7 @@ import {
 } from "@/lib/constants";
 import { formatCurrency } from "@/lib/currency";
 import { daysSince, formatMobileDisplay, formatStatusChangedBy, formatDateTime, parseProductPhotos } from "@/lib/jobs";
+import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -44,11 +45,34 @@ type JobDetail = {
   }>;
 };
 
+type JobPatchResponse = Partial<JobDetail> & {
+  statusHistoryEntry?: JobDetail["statusHistory"][number];
+};
+
+function mergeJobPatch(prev: JobDetail, patch: JobPatchResponse): JobDetail {
+  const { statusHistoryEntry, ...fields } = patch;
+  return {
+    ...prev,
+    ...fields,
+    assignedTechnician:
+      fields.assignedTechnician !== undefined
+        ? fields.assignedTechnician
+        : prev.assignedTechnician,
+    completedByTechnician:
+      fields.completedByTechnician !== undefined
+        ? fields.completedByTechnician
+        : prev.completedByTechnician,
+    statusHistory: statusHistoryEntry
+      ? [statusHistoryEntry, ...prev.statusHistory]
+      : prev.statusHistory,
+  };
+}
+
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { role, loaded: authLoaded } = useAuth();
   const [job, setJob] = useState<JobDetail | null>(null);
-  const [role, setRole] = useState<StaffRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [remarks, setRemarks] = useState("");
@@ -62,10 +86,7 @@ export default function JobDetailPage() {
   const [showCompletedByEdit, setShowCompletedByEdit] = useState(false);
 
   const fetchJob = useCallback(async () => {
-    const [jobRes, meRes] = await Promise.all([
-      fetch(`/api/jobs/${id}`),
-      fetch("/api/auth/me"),
-    ]);
+    const jobRes = await fetch(`/api/jobs/${id}`);
 
     if (!jobRes.ok) {
       router.push("/jobs/pending");
@@ -73,9 +94,7 @@ export default function JobDetailPage() {
     }
 
     const data = await jobRes.json();
-    const me = await meRes.json();
     setJob(data);
-    setRole(me.role ?? null);
     setRemarks(data.remarks ?? "");
     setReadyAmount(data.serviceAmount != null ? String(data.serviceAmount) : "");
     setEditAmount(data.serviceAmount != null ? String(data.serviceAmount) : "");
@@ -105,9 +124,9 @@ export default function JobDetailPage() {
       body: JSON.stringify(updates),
     });
     if (res.ok) {
-      const data = await res.json();
-      setJob(data);
-      setRemarks(data.remarks ?? "");
+      const data = (await res.json()) as JobPatchResponse;
+      setJob((prev) => (prev ? mergeJobPatch(prev, data) : prev));
+      if (data.remarks !== undefined) setRemarks(data.remarks ?? "");
       setShowReadyForm(false);
       setShowAmountEdit(false);
     } else {
@@ -177,7 +196,7 @@ export default function JobDetailPage() {
     setShowCompletedByEdit(false);
   }
 
-  if (loading || !job) {
+  if (loading || !job || !authLoaded) {
     return (
       <AppShell>
         <p className="text-center text-slate-500">Loading…</p>
@@ -185,7 +204,7 @@ export default function JobDetailPage() {
     );
   }
 
-  const staffRole = role ?? "technician";
+  const staffRole = (role ?? "technician") as StaffRole;
   const selectableStatuses = getSelectableStatuses(
     job.status as JobStatusValue,
     staffRole

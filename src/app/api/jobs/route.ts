@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -6,19 +6,16 @@ import {
   normalizeMobile,
   normalizeJobNumberQuery,
   detectSearchQueryType,
-  recordStatusChange,
 } from "@/lib/jobs";
-import {
-  ensureLookupOption,
-  getDefaultTechnicianForAppliance,
-} from "@/lib/lookups";
-import { enqueueReceiptPrint } from "@/lib/print-queue";
+import { getDefaultTechnicianForAppliance } from "@/lib/lookups";
+import { runPostJobCreateTasks } from "@/lib/job-create-background";
 import { canCreateJob } from "@/lib/auth";
 import { getSession } from "@/lib/session";
 import { ACTIVE_STATUSES, MAX_PRODUCT_PHOTOS } from "@/lib/constants";
+import { jobListSelect } from "@/lib/job-selects";
 import {
   isSupabaseStorageConfigured,
-  uploadProductPhotos,
+  type PhotoBufferPayload,
 } from "@/lib/supabase-storage";
 
 export async function GET(request: NextRequest) {
@@ -65,10 +62,7 @@ export async function GET(request: NextRequest) {
 
   const jobs = await prisma.jobCard.findMany({
     where,
-    include: {
-      customer: true,
-      assignedTechnician: true,
-    },
+    select: jobListSelect,
     orderBy: deliveryOnly && !q ? { readyAt: "desc" } : { receivedAt: "desc" },
     take: isMobileSearch ? 100 : 50,
   });
@@ -76,7 +70,18 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(jobs);
 }
 
+async function readPhotoBuffers(files: File[]): Promise<PhotoBufferPayload[]> {
+  return Promise.all(
+    files.map(async (file) => ({
+      buffer: Buffer.from(await file.arrayBuffer()),
+      type: file.type || "image/jpeg",
+      name: file.name,
+    }))
+  );
+}
+
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
   const session = await getSession();
   if (!session.isLoggedIn || !canCreateJob(session.role)) {
     return NextResponse.json({ error: "Not allowed to create jobs" }, { status: 403 });
@@ -139,35 +144,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await Promise.all([
-    ensureLookupOption("appliance", applianceType),
-    ensureLookupOption("brand", brand),
-    ensureLookupOption("complaint", complaint),
+  const [customer, jobNumber, defaultTech] = await Promise.all([
+    prisma.customer.upsert({
+      where: { mobile: normalizedMobile },
+      update: { name: customerName.trim() },
+      create: {
+        mobile: normalizedMobile,
+        name: customerName.trim(),
+      },
+    }),
+    generateJobNumber(),
+    getDefaultTechnicianForAppliance(applianceType),
   ]);
-
-  const defaultTech = await getDefaultTechnicianForAppliance(applianceType);
-
-  const customer = await prisma.customer.upsert({
-    where: { mobile: normalizedMobile },
-    update: { name: customerName.trim() },
-    create: {
-      mobile: normalizedMobile,
-      name: customerName.trim(),
-    },
-  });
-
-  const jobNumber = await generateJobNumber();
-
-  let productPhotos: string | null = null;
-  if (photoFiles.length > 0) {
-    try {
-      const urls = await uploadProductPhotos(photoFiles, jobNumber);
-      productPhotos = JSON.stringify(urls);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Photo upload failed";
-      return NextResponse.json({ error: message }, { status: 500 });
-    }
-  }
 
   const job = await prisma.jobCard.create({
     data: {
@@ -178,7 +166,7 @@ export async function POST(request: NextRequest) {
       model: model?.trim() || null,
       complaint,
       physicalCondition: physicalCondition?.trim() || null,
-      productPhotos,
+      productPhotos: null,
       assignedTechnicianId: defaultTech?.id ?? null,
       createdBy: session.role ?? "reception",
       statusHistory: {
@@ -194,11 +182,28 @@ export async function POST(request: NextRequest) {
     include: {
       customer: true,
       assignedTechnician: true,
-      statusHistory: true,
     },
   });
 
-  await enqueueReceiptPrint(job.id);
+  after(async () => {
+    const photoBuffers =
+      photoFiles.length > 0 ? await readPhotoBuffers(photoFiles) : [];
+    await runPostJobCreateTasks({
+      jobId: job.id,
+      jobNumber,
+      applianceType,
+      brand,
+      complaint,
+      photos: photoBuffers,
+    });
+  });
 
-  return NextResponse.json(job, { status: 201 });
+  const elapsedMs = Date.now() - startedAt;
+  if (process.env.NODE_ENV === "development") {
+    console.info(`[job-create] sync path ${elapsedMs}ms job=${jobNumber}`);
+  }
+
+  const response = NextResponse.json(job, { status: 201 });
+  response.headers.set("Server-Timing", `job-create;dur=${elapsedMs}`);
+  return response;
 }

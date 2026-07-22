@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/components/AuthProvider";
 import { SHOP_NAME } from "@/lib/constants";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -14,30 +15,30 @@ type Technician = { id: string; name: string };
 
 export default function TechnicianSelectPage() {
   const router = useRouter();
+  const { role, isLoggedIn, technicianId, loaded: authLoaded } = useAuth();
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function init() {
-      const meRes = await fetch("/api/auth/me");
-      const me = await meRes.json();
+    if (!authLoaded) return;
 
-      if (!me.isLoggedIn || me.role !== "technician") {
-        router.push("/");
-        return;
-      }
-
-      if (me.technicianId) {
-        router.push("/jobs/pending");
-        return;
-      }
-
-      const res = await fetch("/api/technicians");
-      setTechnicians(await res.json());
-      setLoading(false);
+    if (!isLoggedIn || role !== "technician") {
+      router.push("/");
+      return;
     }
-    init();
-  }, [router]);
+
+    if (technicianId) {
+      router.push("/jobs/pending");
+      return;
+    }
+
+    fetch("/api/technicians")
+      .then((r) => r.json())
+      .then((data) => {
+        setTechnicians(data);
+        setLoading(false);
+      });
+  }, [authLoaded, isLoggedIn, role, technicianId, router]);
 
   async function selectTechnician(technicianId: string) {
     await fetch("/api/auth/technician-select", {

@@ -12,27 +12,32 @@ function getStorageConfig() {
   return { url, key, bucket };
 }
 
-export async function uploadProductPhotos(
-  files: File[],
+export type PhotoBufferPayload = {
+  buffer: Buffer;
+  type: string;
+  name: string;
+};
+
+export async function uploadProductPhotoBuffers(
+  photos: PhotoBufferPayload[],
   jobNumber: string
 ): Promise<string[]> {
   const { url, key, bucket } = getStorageConfig();
   const urls: string[] = [];
 
-  for (const file of files.slice(0, MAX_PHOTOS)) {
-    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  for (const photo of photos.slice(0, MAX_PHOTOS)) {
+    const ext = photo.name.split(".").pop()?.toLowerCase() || "jpg";
     const safeJobNumber = jobNumber.replace(/\s+/g, "-");
     const path = `${safeJobNumber}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
 
     const res = await fetch(`${url}/storage/v1/object/${bucket}/${path}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
-        "Content-Type": file.type || "image/jpeg",
+        "Content-Type": photo.type || "image/jpeg",
         "x-upsert": "false",
       },
-      body: buffer,
+      body: new Uint8Array(photo.buffer),
     });
 
     if (!res.ok) {
@@ -44,6 +49,20 @@ export async function uploadProductPhotos(
   }
 
   return urls;
+}
+
+export async function uploadProductPhotos(
+  files: File[],
+  jobNumber: string
+): Promise<string[]> {
+  const photos = await Promise.all(
+    files.slice(0, MAX_PHOTOS).map(async (file) => ({
+      buffer: Buffer.from(await file.arrayBuffer()),
+      type: file.type || "image/jpeg",
+      name: file.name,
+    }))
+  );
+  return uploadProductPhotoBuffers(photos, jobNumber);
 }
 
 export function isSupabaseStorageConfigured(): boolean {

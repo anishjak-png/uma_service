@@ -6,6 +6,7 @@ import { CreatableSelect } from "@/components/CreatableSelect";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -33,8 +34,8 @@ type Customer = {
 export default function AdminContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { role, isLoggedIn, loaded: authLoaded } = useAuth();
   const [tab, setTab] = useState<AdminTab>("technicians");
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
 
   useEffect(() => {
     const requested = searchParams.get("tab");
@@ -49,18 +50,13 @@ export default function AdminContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.isLoggedIn || data.role !== "admin") {
-          router.push("/dashboard");
-          return;
-        }
-        setAuthorized(true);
-      });
-  }, [router]);
+    if (!authLoaded) return;
+    if (!isLoggedIn || role !== "admin") {
+      router.push("/dashboard");
+    }
+  }, [authLoaded, isLoggedIn, role, router]);
 
-  if (authorized === null) {
+  if (!authLoaded) {
     return (
       <AppShell>
         <p className="text-center text-slate-500">Loading…</p>
@@ -68,7 +64,7 @@ export default function AdminContent() {
     );
   }
 
-  if (!authorized) return null;
+  if (!isLoggedIn || role !== "admin") return null;
 
   return (
     <AppShell>

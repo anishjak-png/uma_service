@@ -82,55 +82,71 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
     select: { id: true, name: true },
   });
 
-  const assignedWorkloadReports = await Promise.all(
-    technicians.map(async (tech) => {
-      const jobs = await prisma.jobCard.findMany({
-        where: { assignedTechnicianId: tech.id },
-        select: { status: true },
-      });
-      return {
-        name: tech.name,
-        totalAssigned: jobs.length,
-        pending: jobs.filter((j) => j.status === "Pending").length,
-        ready: jobs.filter((j) => j.status === "Ready").length,
-        waitingForApproval: jobs.filter(
-          (j) => j.status === "WaitingForCustomerApproval"
-        ).length,
-        return: jobs.filter((j) => j.status === "Return").length,
-      };
-    })
+  const [assignedGroups, completedCounts, deliveredInPeriod] = await Promise.all([
+    prisma.jobCard.groupBy({
+      by: ["assignedTechnicianId", "status"],
+      _count: { id: true },
+      where: { assignedTechnicianId: { not: null } },
+    }),
+    prisma.jobCard.groupBy({
+      by: ["completedByTechnicianId"],
+      _count: { id: true },
+      where: {
+        completedByTechnicianId: { not: null },
+        readyAt: { gte: start, lt: end },
+      },
+    }),
+    prisma.jobCard.findMany({
+      where: {
+        completedByTechnicianId: { not: null },
+        status: "Delivered",
+        deliveredAt: { gte: start, lt: end },
+      },
+      select: { completedByTechnicianId: true, serviceAmount: true },
+    }),
+  ]);
+
+  const assignedWorkloadReports = technicians.map((tech) => {
+    const rows = assignedGroups.filter((g) => g.assignedTechnicianId === tech.id);
+    const countFor = (status: string) =>
+      rows.find((r) => r.status === status)?._count.id ?? 0;
+    const totalAssigned = rows.reduce((sum, r) => sum + r._count.id, 0);
+
+    return {
+      name: tech.name,
+      totalAssigned,
+      pending: countFor("Pending"),
+      ready: countFor("Ready"),
+      waitingForApproval: countFor("WaitingForCustomerApproval"),
+      return: countFor("Return"),
+    };
+  });
+
+  const completedCountById = Object.fromEntries(
+    completedCounts.map((row) => [row.completedByTechnicianId!, row._count.id])
   );
 
-  const completedByReports = await Promise.all(
-    technicians.map(async (tech) => {
-      const completedInPeriod = await prisma.jobCard.count({
-        where: {
-          completedByTechnicianId: tech.id,
-          readyAt: { gte: start, lt: end },
-        },
-      });
+  const deliveredByTech = new Map<string, { serviceAmount: number | null }[]>();
+  for (const job of deliveredInPeriod) {
+    const techId = job.completedByTechnicianId!;
+    const list = deliveredByTech.get(techId) ?? [];
+    list.push({ serviceAmount: job.serviceAmount });
+    deliveredByTech.set(techId, list);
+  }
 
-      const delivered = await prisma.jobCard.findMany({
-        where: {
-          completedByTechnicianId: tech.id,
-          status: "Delivered",
-          deliveredAt: { gte: start, lt: end },
-        },
-        select: { serviceAmount: true },
-      });
+  const completedByReports = technicians.map((tech) => {
+    const delivered = deliveredByTech.get(tech.id) ?? [];
+    const { lowest, highest } = billRange(delivered);
 
-      const { lowest, highest } = billRange(delivered);
-
-      return {
-        name: tech.name,
-        totalCompletedJobs: completedInPeriod,
-        totalCollection: sumAmount(delivered),
-        averageBill: avgAmount(delivered),
-        lowestBill: lowest,
-        highestBill: highest,
-      };
-    })
-  );
+    return {
+      name: tech.name,
+      totalCompletedJobs: completedCountById[tech.id] ?? 0,
+      totalCollection: sumAmount(delivered),
+      averageBill: avgAmount(delivered),
+      lowestBill: lowest,
+      highestBill: highest,
+    };
+  });
 
   return { period, assignedWorkloadReports, completedByReports };
 }

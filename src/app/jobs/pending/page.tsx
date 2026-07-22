@@ -8,6 +8,7 @@ import {
   TechnicianJobScopeToggle,
   useTechnicianJobScope,
 } from "@/components/TechnicianJobScopeToggle";
+import { useAuth } from "@/components/AuthProvider";
 import { ACTIVE_STATUSES } from "@/lib/constants";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -32,10 +33,9 @@ type TechnicianStats = {
 };
 
 export default function PendingJobsPage() {
+  const { role, loaded: roleLoaded } = useAuth();
   const [jobs, setJobs] = useState<PendingJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<string | null>(null);
-  const [roleLoaded, setRoleLoaded] = useState(false);
   const [stats, setStats] = useState<TechnicianStats | null>(null);
   const { scope, setScope, ready: scopeReady } = useTechnicianJobScope();
 
@@ -59,18 +59,11 @@ export default function PendingJobsPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    if (!roleLoaded || role !== "technician") return;
+    fetch("/api/technician/stats")
       .then((r) => r.json())
-      .then((data) => {
-        setRole(data.role ?? null);
-        setRoleLoaded(true);
-        if (data.role === "technician") {
-          fetch("/api/technician/stats")
-            .then((r) => r.json())
-            .then(setStats);
-        }
-      });
-  }, []);
+      .then(setStats);
+  }, [role, roleLoaded]);
 
   useEffect(() => {
     if (!roleLoaded) return;

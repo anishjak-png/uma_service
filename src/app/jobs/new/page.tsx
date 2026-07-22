@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ReceiptActions } from "@/components/ReceiptActions";
 import { MAX_PRODUCT_PHOTOS, SHOP_NAME } from "@/lib/constants";
 import { formatMobileDisplay } from "@/lib/jobs";
+import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,8 +23,19 @@ type CreatedJob = {
   assignedTechnician?: { name: string } | null;
 };
 
+type LookupOptions = {
+  appliance: Array<{ value: string }>;
+  brand: Array<{ value: string }>;
+  complaint: Array<{ value: string }>;
+};
+
 export default function NewJobPage() {
-  const [role, setRole] = useState<string | null>(null);
+  const { role, loaded: authLoaded } = useAuth();
+  const [lookupOptions, setLookupOptions] = useState<Record<string, string[]>>({
+    appliance: [],
+    brand: [],
+    complaint: [],
+  });
   const [mobile, setMobile] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [applianceType, setApplianceType] = useState("");
@@ -39,10 +51,23 @@ export default function NewJobPage() {
   const [createdJob, setCreatedJob] = useState<CreatedJob | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/api/lookups?categories=appliance,brand,complaint")
       .then((r) => r.json())
-      .then((data) => setRole(data.role ?? null));
+      .then((data: LookupOptions) => {
+        setLookupOptions({
+          appliance: data.appliance?.map((o) => o.value) ?? [],
+          brand: data.brand?.map((o) => o.value) ?? [],
+          complaint: data.complaint?.map((o) => o.value) ?? [],
+        });
+      });
   }, []);
+
+  function handleLookupOptionsChange(
+    category: "appliance" | "brand" | "complaint",
+    options: string[]
+  ) {
+    setLookupOptions((prev) => ({ ...prev, [category]: options }));
+  }
 
   useEffect(() => {
     return () => {
@@ -137,6 +162,14 @@ export default function NewJobPage() {
 
     setCreatedJob(data);
     setLoading(false);
+  }
+
+  if (!authLoaded) {
+    return (
+      <AppShell>
+        <p className="text-center text-slate-500">Loading...</p>
+      </AppShell>
+    );
   }
 
   if (role === "technician") {
@@ -249,6 +282,8 @@ export default function NewJobPage() {
               value={applianceType}
               onChange={setApplianceType}
               onSelect={fetchAssignedTech}
+              options={lookupOptions.appliance}
+              onOptionsChange={handleLookupOptionsChange}
               required
             />
 
@@ -263,6 +298,8 @@ export default function NewJobPage() {
               label="Brand"
               value={brand}
               onChange={setBrand}
+              options={lookupOptions.brand}
+              onOptionsChange={handleLookupOptionsChange}
               required
             />
 
@@ -282,6 +319,8 @@ export default function NewJobPage() {
               label="Complaint"
               value={complaint}
               onChange={setComplaint}
+              options={lookupOptions.complaint}
+              onOptionsChange={handleLookupOptionsChange}
               required
               placeholder="Select or add complaint"
             />

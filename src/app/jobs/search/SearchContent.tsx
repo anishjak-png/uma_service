@@ -9,6 +9,7 @@ import {
   useTechnicianJobScope,
   type TechnicianJobScope,
 } from "@/components/TechnicianJobScopeToggle";
+import { useAuth } from "@/components/AuthProvider";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
 import { formatCurrency } from "@/lib/currency";
 import { formatMobileDisplay, formatDateTime } from "@/lib/jobs";
@@ -130,6 +131,7 @@ function ServiceHistoryTable({
 
 export default function SearchContent() {
   const router = useRouter();
+  const { role, loaded: roleLoaded } = useAuth();
   const searchParams = useSearchParams();
   const initialQ = searchParams.get("q") ?? "";
   const initialStatus = searchParams.get("status") ?? "all";
@@ -140,8 +142,6 @@ export default function SearchContent() {
   const [customerId, setCustomerId] = useState(initialCustomerId);
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [role, setRole] = useState<string | null>(null);
-  const [roleLoaded, setRoleLoaded] = useState(false);
   const { scope, setScope, ready: scopeReady } = useTechnicianJobScope();
 
   const search = useCallback(
@@ -169,15 +169,6 @@ export default function SearchContent() {
     },
     []
   );
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        setRole(data.role ?? null);
-        setRoleLoaded(true);
-      });
-  }, []);
 
   useEffect(() => {
     if (!roleLoaded) return;

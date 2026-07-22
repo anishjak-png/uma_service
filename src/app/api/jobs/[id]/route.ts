@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { recordStatusChange } from "@/lib/jobs";
 import { parseServiceAmount } from "@/lib/currency";
+import { jobPatchSelect } from "@/lib/job-selects";
 import {
   canDeliverJob,
   canEditCompletedBy,
@@ -78,6 +78,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       session.role === "technician" && session.technicianName
         ? session.technicianName
         : session.role;
+
+    let statusChange: JobStatus | null = null;
+    let statusNote: string | undefined;
 
     if (body.status) {
       const newStatus = body.status as JobStatus;
@@ -156,12 +159,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         data.deliveredAt = new Date();
       }
 
-      await recordStatusChange(
-        existing.id,
-        newStatus,
-        changedBy,
-        body.note ?? undefined
-      );
+      statusChange = newStatus;
+      statusNote = body.note ?? undefined;
     }
 
     if (
@@ -197,15 +196,32 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.completedByTechnicianId = body.completedByTechnicianId || null;
     }
 
+    const jobId = existing.id;
+
+    if (statusChange) {
+      const [statusHistoryEntry, job] = await prisma.$transaction([
+        prisma.statusHistory.create({
+          data: {
+            jobCardId: jobId,
+            status: statusChange,
+            changedBy,
+            note: statusNote,
+          },
+        }),
+        prisma.jobCard.update({
+          where: { id: jobId },
+          data,
+          select: jobPatchSelect,
+        }),
+      ]);
+
+      return NextResponse.json({ ...job, statusHistoryEntry });
+    }
+
     const job = await prisma.jobCard.update({
-      where: { id: existing.id },
+      where: { id: jobId },
       data,
-      include: {
-        customer: true,
-        assignedTechnician: true,
-        completedByTechnician: true,
-        statusHistory: { orderBy: { changedAt: "desc" } },
-      },
+      select: jobPatchSelect,
     });
 
     return NextResponse.json(job);

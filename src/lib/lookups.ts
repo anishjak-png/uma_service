@@ -2,6 +2,28 @@ import { prisma } from "./db";
 
 export type LookupCategory = "appliance" | "brand" | "complaint";
 
+export async function getLookupOptionsBatch(categories: LookupCategory[]) {
+  const options = await prisma.lookupOption.findMany({
+    where: { category: { in: categories } },
+    orderBy: [{ category: "asc" }, { value: "asc" }],
+  });
+
+  const result: Record<LookupCategory, typeof options> = {
+    appliance: [],
+    brand: [],
+    complaint: [],
+  };
+
+  for (const option of options) {
+    const category = option.category as LookupCategory;
+    if (categories.includes(category)) {
+      result[category].push(option);
+    }
+  }
+
+  return result;
+}
+
 export async function getLookupOptions(category: LookupCategory) {
   return prisma.lookupOption.findMany({
     where: { category },

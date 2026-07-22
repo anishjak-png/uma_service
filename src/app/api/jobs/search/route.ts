@@ -6,6 +6,7 @@ import {
   normalizeJobNumberQuery,
   normalizeMobile,
 } from "@/lib/jobs";
+import { jobListSelect } from "@/lib/job-selects";
 import { getSession } from "@/lib/session";
 
 function technicianScopeWhere(
@@ -35,15 +36,10 @@ export async function GET(request: NextRequest) {
   const statusWhere =
     status && status !== "all" ? { status: status as JobStatus } : {};
 
-  const jobInclude = {
-    customer: true,
-    assignedTechnician: true,
-  } as const;
-
   async function jobsForCustomer(id: string) {
     return prisma.jobCard.findMany({
       where: { customerId: id, ...scopeWhere, ...statusWhere },
-      include: jobInclude,
+      select: jobListSelect,
       orderBy: { receivedAt: "desc" },
     });
   }
@@ -54,9 +50,31 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  async function customerJobsResponse(
+    customer: { id: string; name: string | null; mobile: string },
+    searchType: "mobile" | "name"
+  ) {
+    const [jobs, totalVisits] = await Promise.all([
+      jobsForCustomer(customer.id),
+      totalVisitsForCustomer(customer.id),
+    ]);
+    return NextResponse.json({
+      mode: "jobs",
+      searchType,
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        mobile: customer.mobile,
+      },
+      totalVisits,
+      jobs,
+    });
+  }
+
   if (customerId) {
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
+      select: { id: true, name: true, mobile: true },
     });
     if (!customer) {
       return NextResponse.json({
@@ -66,19 +84,7 @@ export async function GET(request: NextRequest) {
         jobs: [],
       });
     }
-    const jobs = await jobsForCustomer(customer.id);
-    const totalVisits = await totalVisitsForCustomer(customer.id);
-    return NextResponse.json({
-      mode: "jobs",
-      searchType: "name",
-      customer: {
-        id: customer.id,
-        name: customer.name,
-        mobile: customer.mobile,
-      },
-      totalVisits,
-      jobs,
-    });
+    return customerJobsResponse(customer, "name");
   }
 
   if (!q) {
@@ -94,7 +100,10 @@ export async function GET(request: NextRequest) {
 
   if (searchType === "mobile") {
     const mobile = normalizeMobile(q);
-    const customer = await prisma.customer.findUnique({ where: { mobile } });
+    const customer = await prisma.customer.findUnique({
+      where: { mobile },
+      select: { id: true, name: true, mobile: true },
+    });
     if (!customer) {
       return NextResponse.json({
         mode: "jobs",
@@ -103,26 +112,14 @@ export async function GET(request: NextRequest) {
         jobs: [],
       });
     }
-    const jobs = await jobsForCustomer(customer.id);
-    const totalVisits = await totalVisitsForCustomer(customer.id);
-    return NextResponse.json({
-      mode: "jobs",
-      searchType: "mobile",
-      customer: {
-        id: customer.id,
-        name: customer.name,
-        mobile: customer.mobile,
-      },
-      totalVisits,
-      jobs,
-    });
+    return customerJobsResponse(customer, "mobile");
   }
 
   if (searchType === "ut") {
     const jobNumber = normalizeJobNumberQuery(q);
     const job = await prisma.jobCard.findFirst({
       where: { jobNumber, ...scopeWhere, ...statusWhere },
-      include: jobInclude,
+      select: jobListSelect,
     });
     return NextResponse.json({
       mode: "jobs",
@@ -140,7 +137,12 @@ export async function GET(request: NextRequest) {
 
   const customers = await prisma.customer.findMany({
     where: { name: { contains: q, mode: "insensitive" } },
-    include: { _count: { select: { jobCards: true } } },
+    select: {
+      id: true,
+      name: true,
+      mobile: true,
+      _count: { select: { jobCards: true } },
+    },
     orderBy: { name: "asc" },
     take: 20,
   });
@@ -155,20 +157,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (customers.length === 1) {
-    const customer = customers[0];
-    const jobs = await jobsForCustomer(customer.id);
-    const totalVisits = await totalVisitsForCustomer(customer.id);
-    return NextResponse.json({
-      mode: "jobs",
-      searchType: "name",
-      customer: {
-        id: customer.id,
-        name: customer.name,
-        mobile: customer.mobile,
-      },
-      totalVisits,
-      jobs,
-    });
+    return customerJobsResponse(customers[0], "name");
   }
 
   return NextResponse.json({
