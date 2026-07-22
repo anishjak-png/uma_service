@@ -90,6 +90,12 @@ async function main() {
     });
   }
 
+  await prisma.jobSequence.upsert({
+    where: { id: 1 },
+    update: {},
+    create: { id: 1, lastNum: 0 },
+  });
+
   console.log("Seed completed");
 }
 

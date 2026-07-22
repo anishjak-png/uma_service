@@ -35,7 +35,7 @@ export function buildReceiptData(job: {
     brand: job.brand,
     model: job.model,
     complaint: job.complaint,
-    statusUrl: `${APP_URL}/j/${job.jobNumber}`,
+    statusUrl: `${APP_URL}/j/${encodeURIComponent(job.jobNumber)}`,
   };
 }
 
@@ -50,9 +50,8 @@ function wrapLine(label: string, value: string, width = 48): string {
 
 /** Plain-text receipt for browser preview / PDF (80mm layout) */
 export function formatReceiptText80mm(data: ReceiptData): string {
-  const appliance = [data.brand, data.model, data.applianceType]
-    .filter(Boolean)
-    .join(" ");
+  const productParts = [data.brand, data.applianceType, data.model].filter(Boolean);
+  const product = productParts.join(" ");
 
   const divider = "=".repeat(42);
   const lines = [
@@ -71,7 +70,7 @@ export function formatReceiptText80mm(data: ReceiptData): string {
 
   lines.push(
     "",
-    wrapLine("Appliance", appliance),
+    wrapLine("Product", product),
     wrapLine("Complaint", data.complaint),
     "",
     "Scan QR to track status:",
@@ -144,9 +143,8 @@ function escPosQrCode(url: string): Uint8Array {
 }
 
 function buildReceiptBodyText(data: ReceiptData): string {
-  const appliance = [data.brand, data.model, data.applianceType]
-    .filter(Boolean)
-    .join(" ");
+  const productParts = [data.brand, data.applianceType, data.model].filter(Boolean);
+  const product = productParts.join(" ");
   const divider = "=".repeat(42);
 
   const lines = [
@@ -162,7 +160,7 @@ function buildReceiptBodyText(data: ReceiptData): string {
 
   lines.push(
     "",
-    wrapLine("Appliance", appliance),
+    wrapLine("Product", product),
     wrapLine("Complaint", data.complaint),
     ""
   );

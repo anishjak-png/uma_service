@@ -2,28 +2,38 @@
 
 Mobile-first job card management for home appliance repair service.
 
+**Database:** Supabase (PostgreSQL) only — all data in the cloud, no local database file.
+
 ## Features
 
 - Create job cards with auto-generated job numbers (`UMA-2026-000001`)
-- **Automatic LAN thermal receipt printing** via print agent on server PC
+- Automatic LAN thermal receipt printing via print agent (optional)
 - Search by mobile number or job card number
 - Technician status updates and cost entry
-- Pending WhatsApp screen for Ready notifications (free, via shop mobile)
+- Pending WhatsApp screen for Ready notifications
 - Customer signature on delivery
 - Public customer status page at `/j/[jobNumber]`
 - PIN-based staff login (Reception / Technician / Admin)
+- Admin: technicians, customers, billing reports
 
 ## Quick Start
+
+1. Create a [Supabase](https://supabase.com) project
+2. Copy `.env.example` → `.env` and add your Supabase `DATABASE_URL` + `DIRECT_URL`
+3. Run:
 
 ```bash
 npm install
 npm run db:push
+npm run db:seed
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### Default PINs (change in `.env`)
+Full Supabase setup: **[docs/SUPABASE.md](docs/SUPABASE.md)**
+
+### Default PINs (change before production)
 
 | Role | PIN |
 |------|-----|
@@ -33,75 +43,33 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and configure:
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Supabase pooler URL (port 6543) — app runtime |
+| `DIRECT_URL` | Supabase direct URL (port 5432) — schema push / seed |
+| `SESSION_SECRET` | Min 32 characters |
+| `RECEPTION_PIN`, `TECHNICIAN_PIN`, `ADMIN_PIN` | Staff login |
+| `NEXT_PUBLIC_APP_URL` | Public app URL (QR on receipts) |
+| `NEXT_PUBLIC_SHOP_NAME`, `NEXT_PUBLIC_SHOP_PHONE` | Receipt / UI |
+| `PRINT_AGENT_API_KEY` | LAN print agent auth (optional) |
 
-- `DATABASE_URL` — SQLite for local dev (`file:./dev.db`), PostgreSQL/Supabase for production
-- `SESSION_SECRET` — min 32 characters
-- `RECEPTION_PIN`, `TECHNICIAN_PIN`, `ADMIN_PIN`
-- `NEXT_PUBLIC_SHOP_NAME`, `NEXT_PUBLIC_SHOP_PHONE`, `NEXT_PUBLIC_APP_URL`
-- `PRINT_AGENT_API_KEY` — shared secret between app and print agent
+## Deploy to Production (Vercel + Supabase)
 
-## LAN Thermal Printer Setup
+1. Push schema: `npm run db:push` (once, against Supabase)
+2. Seed: `npm run db:seed` (once)
+3. Import repo on [Vercel](https://vercel.com)
+4. Set all env vars (see [docs/SUPABASE.md](docs/SUPABASE.md))
+5. Deploy — phones use `https://your-app.vercel.app`
 
-The app enqueues print jobs when a job card is created. A **print agent** on the shop server PC polls the app and sends ESC/POS to the 80mm LAN printer (port 9100).
+## LAN Thermal Printer (optional)
 
-### 1. Configure the app
+Print agent on shop PC polls the **cloud app**; data stays in Supabase.
 
-Set in `.env` (or Vercel env for production):
-
-```
-PRINT_AGENT_API_KEY="your-long-random-secret"
-NEXT_PUBLIC_APP_URL="https://your-app-url.com"
-```
-
-### 2. Configure the server PC
-
-On the always-on PC connected to the same network as the printer:
-
-```bash
-# In .env on server PC:
-PRINT_AGENT_APP_URL="https://your-app-url.com"
-PRINT_AGENT_API_KEY="same-secret-as-app"
-THERMAL_PRINTER_HOST="192.168.1.100"
-THERMAL_PRINTER_PORT="9100"
-PRINT_AGENT_POLL_MS="2000"
-```
-
-Start the agent:
-
-```bash
-npm run print-agent
-```
-
-Run at Windows startup via Task Scheduler or PM2.
-
-### 3. Verify printer connectivity
-
-```powershell
-Test-NetConnection 192.168.1.100 -Port 9100
-```
-
-Create a test job from reception — receipt should print within ~2 seconds.
-
-## Deploy to Production
-
-1. Create a Supabase project and get the PostgreSQL connection string
-2. Update `DATABASE_URL` in production env
-3. Change `provider` in `prisma/schema.prisma` to `postgresql` if needed
-4. Deploy to Vercel: `vercel deploy`
-5. Set all env vars in Vercel dashboard (including `PRINT_AGENT_API_KEY`)
-6. Run print agent on shop server PC pointing at production URL
+See [docs/SUPABASE.md](docs/SUPABASE.md) § Print agent.
 
 ## Daily Workflow
 
-1. **Reception:** Create job → receipt auto-prints → write sticker → hand receipt to customer
-2. **Technician:** Update status and enter cost in app
-3. **When free:** Open WhatsApp Pending → send Ready messages → mark sent
-4. **Delivery:** Search job → customer signs → mark delivered
-
-## Hardware
-
-- 1 Android phone at reception
-- 1 LAN 80mm thermal printer (ESC/POS, port 9100)
-- 1 always-on server PC running the print agent
-- Shop mobile for WhatsApp Ready notifications
+1. **Reception:** Create job → receipt prints (if agent running) → sticker → hand receipt
+2. **Technician:** Update status and cost
+3. **WhatsApp Pending:** Send Ready messages when free
+4. **Delivery:** Search → signature → mark delivered

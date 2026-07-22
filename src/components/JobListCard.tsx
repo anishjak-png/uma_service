@@ -1,4 +1,5 @@
 import { JobStatusBadge } from "@/components/JobStatusBadge";
+import { formatCurrency } from "@/lib/currency";
 import { formatMobileDisplay } from "@/lib/jobs";
 import Link from "next/link";
 import { ReactNode } from "react";
@@ -12,7 +13,7 @@ export type JobListCardProps = {
   applianceLine: string;
   complaint?: string;
   meta?: string;
-  finalCost?: number | null;
+  serviceAmount?: number | null;
   badge?: ReactNode;
   footer?: ReactNode;
 };
@@ -26,7 +27,7 @@ export function JobListCard({
   applianceLine,
   complaint,
   meta,
-  finalCost,
+  serviceAmount,
   badge,
   footer,
 }: JobListCardProps) {
@@ -46,14 +47,14 @@ export function JobListCard({
               </p>
             )}
             {meta && <p className="mt-2 text-xs text-slate-400">{meta}</p>}
+            {serviceAmount != null && (
+              <p className="mt-1 text-sm font-semibold text-emerald-700">
+                {formatCurrency(serviceAmount)}
+              </p>
+            )}
           </div>
           <div className="shrink-0 text-right">
             {badge ?? <JobStatusBadge status={status} />}
-            {finalCost != null && (
-              <p className="mt-1 text-sm font-bold text-emerald-700">
-                Rs {finalCost}
-              </p>
-            )}
           </div>
         </div>
       </Link>

@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "PIN required" }, { status: 400 });
   }
 
-  const role = roleFromPin(pin);
+  const role = roleFromPin(pin.trim());
   if (!role) {
     return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
   }

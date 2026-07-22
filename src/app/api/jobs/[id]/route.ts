@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { recordStatusChange } from "@/lib/jobs";
+import { parseServiceAmount } from "@/lib/currency";
+import {
+  canDeliverJob,
+  canEditCompletedBy,
+  canEditDeliveredJob,
+  canEditServiceAmount,
+  canReopenDeliveredJob,
+  isServiceAmountLocked,
+} from "@/lib/auth";
 import { getSession } from "@/lib/session";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -14,7 +23,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     include: {
       customer: true,
       assignedTechnician: true,
-      attendedTechnician: true,
+      completedByTechnician: true,
       statusHistory: { orderBy: { changedAt: "desc" } },
     },
   });
@@ -29,6 +38,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const session = await getSession();
+    if (!session.isLoggedIn || !session.role) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await context.params;
     const body = await request.json();
 
@@ -40,68 +53,148 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
+    if (existing.status === "Delivered" && !canEditDeliveredJob(session.role)) {
+      return NextResponse.json(
+        { error: "Delivered jobs cannot be edited. Contact admin to reopen." },
+        { status: 403 }
+      );
+    }
+
+    const amountLocked = isServiceAmountLocked(existing);
+
+    if (
+      body.serviceAmount !== undefined &&
+      !body.status &&
+      !canEditServiceAmount(session.role)
+    ) {
+      return NextResponse.json(
+        { error: "Only admin can edit service amount after job is marked Ready" },
+        { status: 403 }
+      );
+    }
+
     const data: Record<string, unknown> = {};
-    const changedBy = session.role ?? "staff";
+    const changedBy =
+      session.role === "technician" && session.technicianName
+        ? session.technicianName
+        : session.role;
 
     if (body.status) {
       const newStatus = body.status as JobStatus;
-      data.status = newStatus;
 
-      if (newStatus === "Ready") {
-        data.readyAt = new Date();
-        if (body.finalCost != null) data.finalCost = parseFloat(body.finalCost);
-        data.readyWhatsappSent = false;
-        data.readyWhatsappSentAt = null;
-      }
-
-      if (newStatus === "Delivered") {
-        if (!body.deliverySignature) {
+      if (existing.status === "Delivered" && newStatus !== "Delivered") {
+        if (!canReopenDeliveredJob(session.role)) {
           return NextResponse.json(
-            { error: "Customer signature required for delivery" },
-            { status: 400 }
+            { error: "Only admin can reopen delivered jobs" },
+            { status: 403 }
           );
         }
-        data.deliveredAt = new Date();
-        data.deliverySignature = body.deliverySignature;
-        data.deliveredBy = changedBy;
-        data.receiptSlipReturned = body.receiptSlipReturned === true;
-        data.deliveryNote = body.deliveryNote?.trim() || null;
+        data.deliveredAt = null;
+      }
 
-        await recordStatusChange(
-          existing.id,
-          newStatus,
-          changedBy,
-          body.note ?? "Delivered — customer signature captured"
-        );
-      } else {
-        await recordStatusChange(
-          existing.id,
-          newStatus,
-          changedBy,
-          body.note ?? undefined
+      if (newStatus === "Delivered" && !canDeliverJob(session.role)) {
+        return NextResponse.json(
+          { error: "Technicians cannot mark jobs as delivered" },
+          { status: 403 }
         );
       }
+
+      if (newStatus === "Ready") {
+        if (amountLocked && !canEditServiceAmount(session.role)) {
+          if (existing.serviceAmount == null) {
+            return NextResponse.json(
+              { error: "Service amount is required when marking Ready" },
+              { status: 400 }
+            );
+          }
+        } else {
+          const amount = parseServiceAmount(body.serviceAmount);
+          if (amount == null) {
+            return NextResponse.json(
+              { error: "Service amount is required when marking Ready" },
+              { status: 400 }
+            );
+          }
+          data.serviceAmount = amount;
+        }
+        if (!existing.readyAt) {
+          data.readyAt = new Date();
+        }
+
+        if (!existing.completedByTechnicianId) {
+          if (session.role === "technician" && session.technicianId) {
+            data.completedByTechnicianId = session.technicianId;
+          } else if (session.role === "reception" || session.role === "admin") {
+            const completedById = body.completedByTechnicianId;
+            if (!completedById || typeof completedById !== "string") {
+              return NextResponse.json(
+                { error: "Select the technician who completed the repair" },
+                { status: 400 }
+              );
+            }
+            const technician = await prisma.technician.findFirst({
+              where: { id: completedById, active: true },
+            });
+            if (!technician) {
+              return NextResponse.json(
+                { error: "Invalid technician selected" },
+                { status: 400 }
+              );
+            }
+            data.completedByTechnicianId = completedById;
+          }
+        }
+      }
+
+      if (newStatus === "Return") {
+        data.serviceAmount = 0;
+      }
+
+      data.status = newStatus;
+
+      if (newStatus === "Delivered") {
+        data.deliveredAt = new Date();
+      }
+
+      await recordStatusChange(
+        existing.id,
+        newStatus,
+        changedBy,
+        body.note ?? undefined
+      );
     }
 
-    if (body.finalCost != null && body.status !== "Ready") {
-      data.finalCost = parseFloat(body.finalCost);
+    if (
+      body.serviceAmount !== undefined &&
+      !body.status &&
+      canEditServiceAmount(session.role)
+    ) {
+      const amount = parseServiceAmount(body.serviceAmount);
+      if (amount == null) {
+        return NextResponse.json(
+          { error: "Invalid service amount" },
+          { status: 400 }
+        );
+      }
+      data.serviceAmount = amount;
     }
 
-    if (body.internalNotes != null) {
-      data.internalNotes = body.internalNotes;
+    if (body.remarks != null) {
+      data.remarks = body.remarks;
     }
 
-    if (body.attendedTechnicianId != null) {
-      data.attendedTechnicianId = body.attendedTechnicianId || null;
-    }
-
-    if (body.assignedTechnicianId != null) {
+    if (body.assignedTechnicianId != null && session.role !== "technician") {
       data.assignedTechnicianId = body.assignedTechnicianId || null;
     }
 
-    if (body.readyWhatsappSent === true) {
-      data.readyWhatsappSent = true;
-      data.readyWhatsappSentAt = new Date();
+    if (body.completedByTechnicianId !== undefined) {
+      if (!canEditCompletedBy(session.role)) {
+        return NextResponse.json(
+          { error: "Only admin can change completed by technician" },
+          { status: 403 }
+        );
+      }
+      data.completedByTechnicianId = body.completedByTechnicianId || null;
     }
 
     const job = await prisma.jobCard.update({
@@ -110,7 +203,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       include: {
         customer: true,
         assignedTechnician: true,
-        attendedTechnician: true,
+        completedByTechnician: true,
         statusHistory: { orderBy: { changedAt: "desc" } },
       },
     });

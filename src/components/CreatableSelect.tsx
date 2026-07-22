@@ -82,7 +82,7 @@ export function CreatableSelect({
 
   return (
     <div ref={containerRef} className="relative">
-      <label className="mb-1 block text-sm font-medium text-gray-700">
+      <label className="mb-1 block text-sm font-medium text-slate-700">
         {label}
         {required && " *"}
       </label>
@@ -90,23 +90,23 @@ export function CreatableSelect({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-4 py-3 text-left focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
+        className="flex h-10 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
       >
-        <span className={value ? "text-gray-900" : "text-gray-400"}>
+        <span className={value ? "text-slate-900" : "text-slate-400"}>
           {value || placeholder}
         </span>
-        <span className="text-gray-400">▾</span>
+        <span className="text-slate-400">▾</span>
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg">
-          <div className="border-b border-gray-100 p-2">
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 p-2">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search or type new..."
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none"
+              className="flex h-10 w-full rounded-md border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter" && canAdd) {
@@ -123,7 +123,7 @@ export function CreatableSelect({
                 <button
                   type="button"
                   onClick={() => addOption(trimmedSearch)}
-                  className="w-full px-4 py-3 text-left text-sm font-medium text-orange-600 hover:bg-orange-50"
+                  className="w-full px-4 py-3 text-left text-sm font-medium text-emerald-600 hover:bg-emerald-50"
                 >
                   + Add &quot;{trimmedSearch}&quot;
                 </button>
@@ -135,8 +135,10 @@ export function CreatableSelect({
                 <button
                   type="button"
                   onClick={() => selectOption(option)}
-                  className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 ${
-                    option === value ? "bg-orange-50 font-semibold text-orange-700" : "text-gray-800"
+                  className={`w-full px-4 py-3 text-left text-sm hover:bg-slate-50 ${
+                    option === value
+                      ? "bg-emerald-50 font-semibold text-emerald-700"
+                      : "text-slate-800"
                   }`}
                 >
                   {option}
@@ -145,7 +147,7 @@ export function CreatableSelect({
             ))}
 
             {filtered.length === 0 && !canAdd && (
-              <li className="px-4 py-3 text-sm text-gray-400">No options found</li>
+              <li className="px-4 py-3 text-sm text-slate-400">No options found</li>
             )}
           </ul>
         </div>

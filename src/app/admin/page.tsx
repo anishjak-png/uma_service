@@ -6,7 +6,6 @@ import { CreatableSelect } from "@/components/CreatableSelect";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -29,13 +28,6 @@ type Customer = {
   mobile: string;
   address: string | null;
   jobCount: number;
-};
-
-type BillingReport = {
-  period: string;
-  pending: { count: number; total: number };
-  delivered: { count: number; total: number };
-  serviced: { count: number; total: number };
 };
 
 export default function AdminPage() {
@@ -67,9 +59,10 @@ export default function AdminPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Admin" description="Technicians, customers, and reports" />
+      <PageHeader title="Admin" description="Technicians, appliances, customers, and reports" />
       <AdminTabs active={tab} onChange={setTab} />
       {tab === "technicians" && <TechniciansTab />}
+      {tab === "appliances" && <AppliancesTab />}
       {tab === "customers" && <CustomersTab />}
       {tab === "reports" && <ReportsTab />}
     </AppShell>
@@ -295,6 +288,157 @@ function TechniciansTab() {
   );
 }
 
+type ApplianceOption = { id: string; value: string };
+
+function AppliancesTab() {
+  const [appliances, setAppliances] = useState<ApplianceOption[]>([]);
+  const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/lookups?category=appliance");
+    setAppliances(await res.json());
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function addAppliance() {
+    if (!newName.trim()) return;
+    const res = await fetch("/api/lookups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: "appliance", value: newName.trim() }),
+    });
+    if (res.ok) {
+      setNewName("");
+      load();
+    } else {
+      const data = await res.json();
+      alert(data.error ?? "Add failed");
+    }
+  }
+
+  async function saveEdit(id: string) {
+    if (!editName.trim()) return;
+    const res = await fetch(`/api/lookups/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: editName.trim() }),
+    });
+    if (res.ok) {
+      setEditingId(null);
+      load();
+    } else {
+      const data = await res.json();
+      alert(data.error ?? "Update failed");
+    }
+  }
+
+  async function deleteAppliance(id: string, name: string) {
+    if (!confirm(`Remove appliance "${name}" from the list?`)) return;
+    const res = await fetch(`/api/lookups/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      load();
+    } else {
+      const data = await res.json();
+      alert(data.error ?? "Delete failed");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Appliance Types</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-slate-500">
+          Edit or remove appliance types shown when creating jobs. Renaming updates
+          existing jobs and technician routing.
+        </p>
+        <ul className="space-y-2">
+          {appliances.map((a) => (
+            <li
+              key={a.id}
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+            >
+              {editingId === a.id ? (
+                <div className="flex gap-2">
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="flex-1 rounded border border-slate-300 px-2 py-1"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => saveEdit(a.id)}
+                    className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="rounded border px-2 py-1 text-xs"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-slate-900">{a.value}</span>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      onClick={() => {
+                        setEditingId(a.id);
+                        setEditName(a.value);
+                      }}
+                      className="rounded px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteAppliance(a.id, a.value)}
+                      className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+          {appliances.length === 0 && (
+            <p className="text-sm text-slate-500">No appliances yet.</p>
+          )}
+        </ul>
+        <div className="flex gap-2 border-t border-slate-100 pt-3">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="New appliance type"
+            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addAppliance();
+              }
+            }}
+          />
+          <button
+            onClick={addAppliance}
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            Add
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CustomersTab() {
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -440,23 +584,62 @@ function CustomersTab() {
 }
 
 function ReportsTab() {
-  const [period, setPeriod] = useState<"today" | "month" | "all">("month");
-  const [report, setReport] = useState<BillingReport | null>(null);
+  const [period, setPeriod] = useState<"today" | "month" | "year">("today");
+  const [report, setReport] = useState<{
+    period: string;
+    summary: {
+      jobsReceived: number;
+      jobsDelivered: number;
+      totalJobs: number;
+      totalCollection: number;
+    };
+    assignedWorkloadReports: Array<{
+      name: string;
+      totalAssigned: number;
+      pending: number;
+      ready: number;
+      waitingForApproval: number;
+      return: number;
+    }>;
+    completedByReports: Array<{
+      name: string;
+      totalCompletedJobs: number;
+      totalCollection: number;
+      averageBill: number;
+      lowestBill: number;
+      highestBill: number;
+    }>;
+    applianceReports: Array<{
+      applianceType: string;
+      totalJobs: number;
+      totalCollection: number;
+      averageServiceAmount: number;
+    }>;
+    brandReports: Array<{
+      brand: string;
+      totalJobs: number;
+      totalCollection: number;
+    }>;
+    pendingAging: { over3Days: number; over7Days: number; over15Days: number };
+    readyNotDelivered: { count: number; totalAmount: number };
+  } | null>(null);
 
   useEffect(() => {
-    fetch(`/api/admin/reports/billing?period=${period}`)
+    fetch(`/api/admin/reports/service?period=${period}`)
       .then((r) => r.json())
       .then(setReport);
   }, [period]);
 
+  const formatRs = (n: number) => `Rs.${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
         {(
           [
             { id: "today", label: "Today" },
-            { id: "month", label: "This month" },
-            { id: "all", label: "All time" },
+            { id: "month", label: "This Month" },
+            { id: "year", label: "This Year" },
           ] as const
         ).map((p) => (
           <button
@@ -475,28 +658,154 @@ function ReportsTab() {
       </div>
 
       {report && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <StatCard
-            label="Pending Bill"
-            value={formatCurrency(report.pending.total)}
-            subtext={`${report.pending.count} ready job(s)`}
-            href="/jobs/search?status=Ready"
-            valueClassName="text-orange-700"
-          />
-          <StatCard
-            label="Delivered Bill"
-            value={formatCurrency(report.delivered.total)}
-            subtext={`${report.delivered.count} delivered`}
-            href="/jobs/search?status=Delivered"
-            valueClassName="text-emerald-700"
-          />
-          <StatCard
-            label="Total Serviced"
-            value={formatCurrency(report.serviced.total)}
-            subtext={`${report.serviced.count} job(s) with bill`}
-            valueClassName="text-blue-700"
-          />
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label={period === "today" ? "Jobs Received Today" : "Total Jobs"}
+              value={period === "today" ? report.summary.jobsReceived : report.summary.totalJobs}
+            />
+            <StatCard
+              label={period === "today" ? "Delivered Today" : "Jobs Delivered"}
+              value={report.summary.jobsDelivered}
+            />
+            <StatCard
+              label="Total Collection"
+              value={formatRs(report.summary.totalCollection)}
+              valueClassName="text-emerald-800"
+            />
+            <StatCard
+              label="Ready (Not Delivered)"
+              value={report.readyNotDelivered.count}
+              subtext={formatRs(report.readyNotDelivered.totalAmount)}
+              href="/jobs/search?status=Ready"
+            />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Pending Aging</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-3 text-sm">
+              <div className="rounded-md bg-amber-50 p-3">
+                <p className="text-slate-600">&gt; 3 days</p>
+                <p className="text-xl font-bold text-amber-800">{report.pendingAging.over3Days}</p>
+              </div>
+              <div className="rounded-md bg-orange-50 p-3">
+                <p className="text-slate-600">&gt; 7 days</p>
+                <p className="text-xl font-bold text-orange-800">{report.pendingAging.over7Days}</p>
+              </div>
+              <div className="rounded-md bg-red-50 p-3">
+                <p className="text-slate-600">&gt; 15 days</p>
+                <p className="text-xl font-bold text-red-800">{report.pendingAging.over15Days}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Assigned Workload</CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <p className="mb-3 text-xs text-slate-500">
+                Based on assigned technician — for work allocation and pending tracking.
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-slate-500">
+                    <th className="pb-2 pr-4">Technician</th>
+                    <th className="pb-2 pr-4">Assigned</th>
+                    <th className="pb-2 pr-4">Pending</th>
+                    <th className="pb-2 pr-4">Ready</th>
+                    <th className="pb-2 pr-4">Waiting</th>
+                    <th className="pb-2">Return</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.assignedWorkloadReports.map((row) => (
+                    <tr key={row.name} className="border-b border-slate-100">
+                      <td className="py-2 pr-4 font-medium">{row.name}</td>
+                      <td className="py-2 pr-4">{row.totalAssigned}</td>
+                      <td className="py-2 pr-4">{row.pending}</td>
+                      <td className="py-2 pr-4">{row.ready}</td>
+                      <td className="py-2 pr-4">{row.waitingForApproval}</td>
+                      <td className="py-2">{row.return}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Completed By Technician Reports</CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <p className="mb-3 text-xs text-slate-500">
+                Based on who marked the job Ready — for repair completion and collection metrics.
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-slate-500">
+                    <th className="pb-2 pr-4">Technician</th>
+                    <th className="pb-2 pr-4">Completed</th>
+                    <th className="pb-2 pr-4">Collection</th>
+                    <th className="pb-2 pr-4">Avg Bill</th>
+                    <th className="pb-2 pr-4">Lowest</th>
+                    <th className="pb-2">Highest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.completedByReports.map((row) => (
+                    <tr key={row.name} className="border-b border-slate-100">
+                      <td className="py-2 pr-4 font-medium">{row.name}</td>
+                      <td className="py-2 pr-4">{row.totalCompletedJobs}</td>
+                      <td className="py-2 pr-4">{formatRs(row.totalCollection)}</td>
+                      <td className="py-2 pr-4">{formatRs(Math.round(row.averageBill))}</td>
+                      <td className="py-2 pr-4">{formatRs(row.lowestBill)}</td>
+                      <td className="py-2">{formatRs(row.highestBill)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Appliance-wise</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {report.applianceReports.map((row) => (
+                  <div key={row.applianceType} className="flex justify-between gap-2">
+                    <span className="text-slate-700">{row.applianceType}</span>
+                    <span className="text-right text-slate-900">
+                      {row.totalJobs} jobs · {formatRs(row.totalCollection)} · avg{" "}
+                      {formatRs(Math.round(row.averageServiceAmount))}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Brand-wise</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {report.brandReports.map((row) => (
+                  <div key={row.brand} className="flex justify-between">
+                    <span className="text-slate-700">{row.brand}</span>
+                    <span className="font-semibold text-slate-900">
+                      {row.totalJobs} · {formatRs(row.totalCollection)}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </>
       )}
     </div>
   );

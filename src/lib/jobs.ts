@@ -2,23 +2,20 @@ import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "./db";
 
 export async function generateJobNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-
   const sequence = await prisma.$transaction(async (tx) => {
-    const existing = await tx.jobSequence.findUnique({ where: { year } });
+    const existing = await tx.jobSequence.findUnique({ where: { id: 1 } });
     if (existing) {
       return tx.jobSequence.update({
-        where: { year },
+        where: { id: 1 },
         data: { lastNum: existing.lastNum + 1 },
       });
     }
     return tx.jobSequence.create({
-      data: { year, lastNum: 1 },
+      data: { id: 1, lastNum: 1 },
     });
   });
 
-  const num = String(sequence.lastNum).padStart(6, "0");
-  return `UMA-${year}-${num}`;
+  return `UT ${sequence.lastNum}`;
 }
 
 export type JobWithCustomer = Prisma.JobCardGetPayload<{
@@ -40,6 +37,16 @@ export function daysSince(date: Date): number {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
+export function parseProductPhotos(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function recordStatusChange(
   jobCardId: string,
   status: JobStatus,
@@ -49,4 +56,14 @@ export async function recordStatusChange(
   return prisma.statusHistory.create({
     data: { jobCardId, status, changedBy, note },
   });
+}
+
+/** Display label for status history "Updated By" (reception → Reception, etc.). */
+export function formatStatusChangedBy(changedBy: string | null | undefined): string {
+  if (!changedBy) return "System";
+  const lower = changedBy.toLowerCase();
+  if (lower === "reception") return "Reception";
+  if (lower === "admin") return "Admin";
+  if (lower === "technician") return "Technician";
+  return changedBy;
 }

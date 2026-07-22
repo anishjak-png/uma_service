@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Customer {
@@ -18,12 +19,11 @@ model Customer {
 }
 
 enum JobStatus {
-  Received
-  Diagnosing
-  InRepair
+  Pending
+  WaitingForCustomerApproval
   Ready
+  Return
   Delivered
-  Closed
 }
 
 model LookupOption {
@@ -36,13 +36,13 @@ model LookupOption {
 }
 
 model Technician {
-  id                 String                @id @default(cuid())
-  name               String                @unique
-  active             Boolean               @default(true)
-  assignedJobs       JobCard[]             @relation("AssignedTechnician")
-  attendedJobs       JobCard[]             @relation("AttendedTechnician")
-  applianceMappings  ApplianceTechnician[]
-  createdAt          DateTime              @default(now())
+  id                String                @id @default(cuid())
+  name              String                @unique
+  active            Boolean               @default(true)
+  assignedJobs      JobCard[]             @relation("AssignedTechnician")
+  completedJobs     JobCard[]             @relation("CompletedByTechnician")
+  applianceMappings ApplianceTechnician[]
+  createdAt         DateTime              @default(now())
 }
 
 model ApplianceTechnician {
@@ -58,34 +58,32 @@ model JobCard {
   customerId           String
   customer             Customer        @relation(fields: [customerId], references: [id])
   applianceType        String
-  brand                String?
+  brand                String
   model                String?
   complaint            String
-  status               JobStatus       @default(Received)
-  finalCost            Float?
-  internalNotes        String?
+  physicalCondition    String?
+  productPhotos        String?
+  serviceAmount        Float?
+  status               JobStatus       @default(Pending)
+  remarks              String?
   receivedAt           DateTime        @default(now())
   readyAt              DateTime?
   deliveredAt          DateTime?
-  deliverySignature    String?
-  deliveredBy          String?
-  receiptSlipReturned  Boolean         @default(false)
-  deliveryNote         String?
-  readyWhatsappSent    Boolean         @default(false)
-  readyWhatsappSentAt  DateTime?
   createdBy            String?
-  assignedTechnicianId String?
-  assignedTechnician   Technician?     @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
-  attendedTechnicianId String?
-  attendedTechnician   Technician?     @relation("AttendedTechnician", fields: [attendedTechnicianId], references: [id])
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
-  statusHistory        StatusHistory[]
-  printJobs            PrintJob[]
+  assignedTechnicianId     String?
+  assignedTechnician       Technician?     @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  completedByTechnicianId  String?
+  completedByTechnician    Technician?     @relation("CompletedByTechnician", fields: [completedByTechnicianId], references: [id])
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  statusHistory            StatusHistory[]
+  printJobs                PrintJob[]
 
   @@index([customerId])
   @@index([status])
   @@index([assignedTechnicianId])
+  @@index([completedByTechnicianId])
+  @@index([receivedAt])
 }
 
 model StatusHistory {
@@ -101,7 +99,7 @@ model StatusHistory {
 }
 
 model JobSequence {
-  year    Int @id
+  id      Int @id @default(1)
   lastNum Int @default(0)
 }
 

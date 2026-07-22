@@ -52,7 +52,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
   const activeJobs = await prisma.jobCard.count({
     where: {
       assignedTechnicianId: id,
-      status: { in: ["Received", "Diagnosing", "InRepair", "Ready"] },
+      status: { in: ["Pending", "WaitingForCustomerApproval", "Ready", "Return"] },
     },
   });
 

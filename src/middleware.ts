@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 
-const publicPaths = ["/", "/j", "/api/auth/login", "/technician/select"];
-const publicPrefixes = ["/j/", "/api/print-queue"];
+const publicPaths = ["/", "/j", "/track", "/api/auth/login", "/technician/select"];
+const publicPrefixes = ["/j/", "/api/print-queue", "/api/track"];
 
 function isPublic(pathname: string): boolean {
   if (publicPaths.includes(pathname)) return true;
@@ -32,6 +32,17 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  if (session.role === "technician") {
+    const blocked =
+      pathname.startsWith("/jobs/new") ||
+      pathname.startsWith("/jobs/delivery") ||
+      pathname.startsWith("/admin") ||
+      pathname.startsWith("/dashboard");
+    if (blocked) {
+      return NextResponse.redirect(new URL("/jobs/pending", request.url));
+    }
   }
 
   return NextResponse.next();

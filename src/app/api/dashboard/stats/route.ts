@@ -7,57 +7,92 @@ export async function GET() {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
 
   const [
-    received,
-    diagnosing,
-    inRepair,
-    ready,
-    whatsappPending,
-    deliveredToday,
-    overdue,
+    todayJobs,
+    pendingJobs,
+    readyJobs,
+    waitingApprovalJobs,
+    todayDeliveries,
+    monthlyJobs,
+    technicianWise,
+    brandWise,
+    applianceWise,
   ] = await Promise.all([
-    prisma.jobCard.count({ where: { status: "Received" } }),
-    prisma.jobCard.count({ where: { status: "Diagnosing" } }),
-    prisma.jobCard.count({ where: { status: "InRepair" } }),
+    prisma.jobCard.count({
+      where: { receivedAt: { gte: today, lt: tomorrow } },
+    }),
+    prisma.jobCard.count({ where: { status: "Pending" } }),
     prisma.jobCard.count({ where: { status: "Ready" } }),
+    prisma.jobCard.count({ where: { status: "WaitingForCustomerApproval" } }),
     prisma.jobCard.count({
-      where: { status: "Ready", readyWhatsappSent: false },
+      where: { status: "Delivered", deliveredAt: { gte: today, lt: tomorrow } },
     }),
     prisma.jobCard.count({
+      where: { receivedAt: { gte: monthStart, lt: nextMonth } },
+    }),
+    prisma.jobCard.groupBy({
+      by: ["assignedTechnicianId"],
+      _count: { id: true },
       where: {
-        status: "Delivered",
-        deliveredAt: { gte: today, lt: tomorrow },
+        status: { in: ["Pending", "WaitingForCustomerApproval", "Ready", "Return"] },
       },
     }),
-    prisma.jobCard.count({
+    prisma.jobCard.groupBy({
+      by: ["brand"],
+      _count: { id: true },
       where: {
-        status: { in: ["Received", "Diagnosing", "InRepair"] },
-        receivedAt: { lt: sevenDaysAgo },
+        status: { in: ["Pending", "WaitingForCustomerApproval", "Ready", "Return"] },
       },
+      orderBy: { _count: { id: "desc" } },
+      take: 10,
+    }),
+    prisma.jobCard.groupBy({
+      by: ["applianceType"],
+      _count: { id: true },
+      where: {
+        status: { in: ["Pending", "WaitingForCustomerApproval", "Ready", "Return"] },
+      },
+      orderBy: { _count: { id: "desc" } },
+      take: 10,
     }),
   ]);
 
-  const recentReady = await prisma.jobCard.findMany({
-    where: { status: "Ready" },
-    include: { customer: true },
-    orderBy: { readyAt: "desc" },
-    take: 10,
-  });
+  const technicianIds = technicianWise
+    .map((t) => t.assignedTechnicianId)
+    .filter((id): id is string => id != null);
+
+  const technicians = technicianIds.length
+    ? await prisma.technician.findMany({
+        where: { id: { in: technicianIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+
+  const techNameById = Object.fromEntries(technicians.map((t) => [t.id, t.name]));
 
   return NextResponse.json({
-    counts: {
-      received,
-      diagnosing,
-      inRepair,
-      ready,
-      whatsappPending,
-      deliveredToday,
-      overdue,
-      active: received + diagnosing + inRepair + ready,
-    },
-    recentReady,
+    todayJobs,
+    pendingJobs,
+    readyJobs,
+    waitingApprovalJobs,
+    todayDeliveries,
+    monthlyJobs,
+    technicianWise: technicianWise.map((row) => ({
+      name: row.assignedTechnicianId
+        ? (techNameById[row.assignedTechnicianId] ?? "Unassigned")
+        : "Unassigned",
+      count: row._count.id,
+    })),
+    brandWise: brandWise.map((row) => ({
+      name: row.brand,
+      count: row._count.id,
+    })),
+    applianceWise: applianceWise.map((row) => ({
+      name: row.applianceType,
+      count: row._count.id,
+    })),
   });
 }

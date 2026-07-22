@@ -2,18 +2,20 @@
 
 import { AppShell } from "@/components/AppShell";
 import { CreatableSelect } from "@/components/CreatableSelect";
+import { PageHeader } from "@/components/PageHeader";
 import { ReceiptActions } from "@/components/ReceiptActions";
-import { SHOP_NAME } from "@/lib/constants";
+import { MAX_PRODUCT_PHOTOS, SHOP_NAME } from "@/lib/constants";
 import { formatMobileDisplay } from "@/lib/jobs";
 import Link from "next/link";
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type CreatedJob = {
   id: string;
   jobNumber: string;
   receivedAt: string;
   applianceType: string;
-  brand?: string | null;
+  brand: string;
   model?: string | null;
   complaint: string;
   customer: { mobile: string; name?: string | null };
@@ -21,16 +23,32 @@ type CreatedJob = {
 };
 
 export default function NewJobPage() {
+  const [role, setRole] = useState<string | null>(null);
   const [mobile, setMobile] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [applianceType, setApplianceType] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [complaint, setComplaint] = useState("");
+  const [physicalCondition, setPhysicalCondition] = useState("");
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [assignedTechName, setAssignedTechName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [createdJob, setCreatedJob] = useState<CreatedJob | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => setRole(data.role ?? null));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      photoPreviews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [photoPreviews]);
 
   const lookupCustomer = useCallback(async (value: string) => {
     const digits = value.replace(/\D/g, "").slice(-10);
@@ -53,22 +71,61 @@ export default function NewJobPage() {
     setAssignedTechName(match?.technician?.name ?? null);
   }
 
+  function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newFiles = Array.from(files).slice(0, MAX_PRODUCT_PHOTOS - photoFiles.length);
+    if (newFiles.length === 0) return;
+
+    setPhotoFiles((prev) => [...prev, ...newFiles].slice(0, MAX_PRODUCT_PHOTOS));
+    setPhotoPreviews((prev) => [
+      ...prev,
+      ...newFiles.map((f) => URL.createObjectURL(f)),
+    ].slice(0, MAX_PRODUCT_PHOTOS));
+
+    e.target.value = "";
+  }
+
+  function removePhoto(index: number) {
+    URL.revokeObjectURL(photoPreviews[index]);
+    setPhotoFiles((prev) => prev.filter((_, i) => i !== index));
+    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function resetForm() {
+    setCreatedJob(null);
+    setMobile("");
+    setCustomerName("");
+    setApplianceType("");
+    setBrand("");
+    setModel("");
+    setComplaint("");
+    setPhysicalCondition("");
+    photoPreviews.forEach((url) => URL.revokeObjectURL(url));
+    setPhotoFiles([]);
+    setPhotoPreviews([]);
+    setAssignedTechName(null);
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
+    const formData = new FormData();
+    formData.set("mobile", mobile);
+    formData.set("customerName", customerName);
+    formData.set("applianceType", applianceType);
+    formData.set("brand", brand);
+    formData.set("model", model);
+    formData.set("complaint", complaint);
+    formData.set("physicalCondition", physicalCondition);
+    photoFiles.forEach((file) => formData.append("photos", file));
+
     const res = await fetch("/api/jobs", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        mobile,
-        customerName: customerName || undefined,
-        applianceType,
-        brand: brand || undefined,
-        model: model || undefined,
-        complaint,
-      }),
+      body: formData,
     });
 
     const data = await res.json();
@@ -82,53 +139,56 @@ export default function NewJobPage() {
     setLoading(false);
   }
 
+  if (role === "technician") {
+    return (
+      <AppShell>
+        <p className="text-center text-slate-500">Technicians cannot create job cards.</p>
+      </AppShell>
+    );
+  }
+
   if (createdJob) {
     return (
       <AppShell>
         <div className="space-y-6">
-          <div className="rounded-2xl bg-green-50 p-6 text-center">
-            <p className="text-sm font-medium text-green-700">Job Card Created</p>
-            <p className="mt-2 break-all text-3xl font-bold text-green-900">
-              {createdJob.jobNumber}
-            </p>
-            {createdJob.assignedTechnician && (
-              <p className="mt-2 text-sm text-green-700">
-                Assigned to {createdJob.assignedTechnician.name}
+          <Card>
+            <CardContent className="p-6 text-center">
+              <p className="text-sm font-medium text-green-700">Job Card Created</p>
+              <p className="mt-2 break-all text-3xl font-bold text-green-900">
+                {createdJob.jobNumber}
               </p>
-            )}
-          </div>
+              {createdJob.assignedTechnician && (
+                <p className="mt-2 text-sm text-green-700">
+                  Assigned to {createdJob.assignedTechnician.name}
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-          <div className="rounded-2xl border-2 border-dashed border-orange-300 bg-orange-50 p-6 text-center">
-            <p className="text-sm font-medium text-orange-700">Write on product sticker</p>
-            <p className="mt-3 text-4xl font-bold tracking-wide text-orange-900">
-              {createdJob.jobNumber}
-            </p>
-            <p className="mt-4 text-3xl font-bold text-orange-800">
-              {formatMobileDisplay(createdJob.customer.mobile)}
-            </p>
-          </div>
+          <Card className="border-2 border-dashed border-emerald-300 bg-emerald-50">
+            <CardContent className="p-6 text-center">
+              <p className="text-sm font-medium text-emerald-700">Write on product sticker</p>
+              <p className="mt-3 text-4xl font-bold tracking-wide text-emerald-900">
+                {createdJob.jobNumber}
+              </p>
+              <p className="mt-4 text-3xl font-bold text-emerald-800">
+                {formatMobileDisplay(createdJob.customer.mobile)}
+              </p>
+            </CardContent>
+          </Card>
 
           <ReceiptActions job={createdJob} autoPoll />
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
             <button
-              onClick={() => {
-                setCreatedJob(null);
-                setMobile("");
-                setCustomerName("");
-                setApplianceType("");
-                setBrand("");
-                setModel("");
-                setComplaint("");
-                setAssignedTechName(null);
-              }}
-              className="w-full rounded-xl bg-orange-600 py-4 text-lg font-semibold text-white hover:bg-orange-700"
+              onClick={resetForm}
+              className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
             >
               Create Another Job
             </button>
             <Link
               href={`/jobs/${createdJob.id}`}
-              className="w-full rounded-xl border-2 border-gray-300 py-4 text-center text-lg font-semibold text-gray-700 hover:bg-gray-50"
+              className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
               View Job Details
             </Link>
@@ -140,50 +200,52 @@ export default function NewJobPage() {
 
   return (
     <AppShell>
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">New Job Card</h2>
-          <p className="text-sm text-gray-500">{SHOP_NAME}</p>
-        </div>
+      <PageHeader title="New Job Card" description={SHOP_NAME} />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="rounded-2xl bg-white p-4 shadow-sm space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Customer Mobile *
-              </label>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Customer</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Mobile Number *</label>
               <input
                 type="tel"
                 inputMode="numeric"
                 required
+                autoFocus
                 value={mobile}
                 onChange={(e) => {
                   setMobile(e.target.value);
                   lookupCustomer(e.target.value);
                 }}
                 placeholder="10-digit mobile number"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Customer Name
-              </label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Customer Name *</label>
               <input
                 type="text"
+                required
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Optional"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="rounded-2xl bg-white p-4 shadow-sm space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Product Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <CreatableSelect
               category="appliance"
-              label="Appliance Type"
+              label="Product Type"
               value={applianceType}
               onChange={setApplianceType}
               onSelect={fetchAssignedTech}
@@ -191,7 +253,7 @@ export default function NewJobPage() {
             />
 
             {assignedTechName && (
-              <p className="rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-800">
+              <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 Will assign to technician: <strong>{assignedTechName}</strong>
               </p>
             )}
@@ -201,42 +263,96 @@ export default function NewJobPage() {
               label="Brand"
               value={brand}
               onChange={setBrand}
+              required
             />
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Model</label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Model</label>
               <input
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder="Optional"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                placeholder="Optional model number"
+                className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
             <CreatableSelect
               category="complaint"
-              label="Complaint / Issue"
+              label="Complaint"
               value={complaint}
               onChange={setComplaint}
               required
               placeholder="Select or add complaint"
             />
-          </div>
 
-          {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
-          )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Physical Condition</label>
+              <textarea
+                value={physicalCondition}
+                onChange={(e) => setPhysicalCondition(e.target.value)}
+                placeholder="Optional - scratches, dents, missing parts, etc."
+                rows={2}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading || !applianceType || !complaint}
-            className="w-full rounded-xl bg-orange-600 py-4 text-lg font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
-          >
-            {loading ? "Creating…" : "Create Job Card"}
-          </button>
-        </form>
-      </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                Product Photos (max {MAX_PRODUCT_PHOTOS})
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={photoFiles.length >= MAX_PRODUCT_PHOTOS}
+                onChange={handlePhotoUpload}
+                className="block w-full text-sm text-slate-600"
+              />
+              {photoPreviews.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {photoPreviews.map((preview, i) => (
+                    <div key={preview} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={preview}
+                        alt={`Product ${i + 1}`}
+                        className="h-20 w-20 rounded-md border border-slate-200 object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(i)}
+                        className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-xs text-white"
+                      >
+                        X
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {error && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={
+            loading ||
+            !customerName.trim() ||
+            !mobile ||
+            !applianceType ||
+            !brand ||
+            !complaint
+          }
+          className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
+        >
+          {loading ? "Creating..." : "Create Job Card"}
+        </button>
+      </form>
     </AppShell>
   );
 }

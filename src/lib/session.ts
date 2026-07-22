@@ -26,8 +26,9 @@ export async function getSession() {
 }
 
 export function roleFromPin(pin: string): StaffRole | null {
-  if (pin === process.env.RECEPTION_PIN) return "reception";
-  if (pin === process.env.TECHNICIAN_PIN) return "technician";
-  if (pin === process.env.ADMIN_PIN) return "admin";
+  const normalized = pin.trim();
+  if (normalized === process.env.RECEPTION_PIN) return "reception";
+  if (normalized === process.env.TECHNICIAN_PIN) return "technician";
+  if (normalized === process.env.ADMIN_PIN) return "admin";
   return null;
 }

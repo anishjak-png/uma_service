@@ -119,7 +119,7 @@ export function ReceiptActions({
     <div className="space-y-2">
       {autoPoll && printState && (
         <div
-          className={`rounded-xl px-4 py-3 text-sm font-medium ${
+          className={`rounded-lg px-4 py-3 text-sm font-medium ${
             printState === "Done"
               ? "bg-green-50 text-green-800"
               : printState === "Failed"
@@ -139,7 +139,7 @@ export function ReceiptActions({
         <button
           onClick={handleReprint}
           disabled={reprinting}
-          className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
         >
           {reprinting
             ? "Sending…"
@@ -151,7 +151,7 @@ export function ReceiptActions({
         </button>
         <button
           onClick={handleBrowserPrint}
-          className="flex-1 rounded-xl border-2 border-orange-600 px-4 py-3 text-sm font-semibold text-orange-700 hover:bg-orange-50"
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
         >
           Print / PDF
         </button>
@@ -160,12 +160,12 @@ export function ReceiptActions({
       <button
         onClick={handleBluetoothPrint}
         disabled={printing}
-        className="w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+        className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
       >
         {printing ? "Printing…" : "Bluetooth fallback (phone)"}
       </button>
 
-      {status && <p className="text-sm text-gray-600">{status}</p>}
+      {status && <p className="text-sm text-slate-600">{status}</p>}
     </div>
   );
 }

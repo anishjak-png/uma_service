@@ -30,45 +30,27 @@ export async function GET(request: NextRequest) {
   const period = (request.nextUrl.searchParams.get("period") ?? "month") as Period;
   const range = dateRange(period);
 
-  const readyWhere = {
-    status: "Ready" as const,
-    finalCost: { not: null },
-    ...(range
-      ? { readyAt: { gte: range.start, lt: range.end } }
-      : {}),
-  };
+  const receivedWhere = range
+    ? { receivedAt: { gte: range.start, lt: range.end } }
+    : {};
 
   const deliveredWhere = {
     status: "Delivered" as const,
-    finalCost: { not: null },
-    ...(range
-      ? { deliveredAt: { gte: range.start, lt: range.end } }
-      : {}),
+    ...(range ? { deliveredAt: { gte: range.start, lt: range.end } } : {}),
   };
 
-  const [pending, delivered] = await Promise.all([
-    prisma.jobCard.aggregate({
-      where: readyWhere,
-      _sum: { finalCost: true },
-      _count: true,
-    }),
-    prisma.jobCard.aggregate({
-      where: deliveredWhere,
-      _sum: { finalCost: true },
-      _count: true,
-    }),
+  const [received, pending, ready, delivered] = await Promise.all([
+    prisma.jobCard.count({ where: receivedWhere }),
+    prisma.jobCard.count({ where: { status: "Pending" } }),
+    prisma.jobCard.count({ where: { status: "Ready" } }),
+    prisma.jobCard.count({ where: deliveredWhere }),
   ]);
-
-  const pendingTotal = pending._sum.finalCost ?? 0;
-  const deliveredTotal = delivered._sum.finalCost ?? 0;
 
   return NextResponse.json({
     period,
-    pending: { count: pending._count, total: pendingTotal },
-    delivered: { count: delivered._count, total: deliveredTotal },
-    serviced: {
-      count: pending._count + delivered._count,
-      total: pendingTotal + deliveredTotal,
-    },
+    received: { count: received },
+    pending: { count: pending },
+    ready: { count: ready },
+    delivered: { count: delivered },
   });
 }

@@ -1,17 +1,13 @@
 import { ReactNode } from "react";
 import { AppNav } from "./AppNav";
 
-export function AppShell({
-  children,
-  whatsappPending = 0,
-}: {
-  children: ReactNode;
-  whatsappPending?: number;
-}) {
+export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-full bg-slate-50">
-      <AppNav whatsappPending={whatsappPending} />
-      <main className="mx-auto max-w-lg px-4 py-4 pb-8">{children}</main>
+    <div className="flex min-h-screen bg-slate-50">
+      <div className="flex flex-1 flex-col">
+        <AppNav />
+        <main className="mx-auto w-full max-w-lg flex-1 p-4 md:p-6">{children}</main>
+      </div>
     </div>
   );
 }
