@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/AppShell";
+import { CallCustomerButton } from "@/components/CallCustomerButton";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
 import { ReceiptActions } from "@/components/ReceiptActions";
 import {
@@ -11,7 +12,7 @@ import {
   type StaffRole,
 } from "@/lib/constants";
 import { formatCurrency } from "@/lib/currency";
-import { daysSince, formatMobileDisplay, formatStatusChangedBy, parseProductPhotos } from "@/lib/jobs";
+import { daysSince, formatMobileDisplay, formatStatusChangedBy, formatDateTime, parseProductPhotos } from "@/lib/jobs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -193,6 +194,8 @@ export default function JobDetailPage() {
   const photos = parseProductPhotos(job.productPhotos);
   const isStaff = role === "reception" || role === "admin";
   const isAdmin = role === "admin";
+  const isTechnician = role === "technician";
+  const showFinancials = isStaff || isAdmin;
   const isLocked = isDeliveredTerminal(job.status) && !isAdmin;
   const canAdminEditAmount = isAdmin && job.readyAt != null && !isLocked;
 
@@ -210,9 +213,12 @@ export default function JobDetailPage() {
               <p className="text-slate-600">
                 {job.customer.name ?? formatMobileDisplay(job.customer.mobile)}
               </p>
-              <p className="text-sm text-slate-500">
-                {formatMobileDisplay(job.customer.mobile)}
-              </p>
+              <div className="mt-1 flex items-center gap-2">
+                <p className="text-sm text-slate-500">
+                  {formatMobileDisplay(job.customer.mobile)}
+                </p>
+                <CallCustomerButton mobile={job.customer.mobile} className="h-8 w-8" />
+              </div>
             </div>
             <JobStatusBadge status={job.status} />
           </div>
@@ -222,7 +228,7 @@ export default function JobDetailPage() {
               <span className="font-medium text-slate-700">Current status:</span>{" "}
               <JobStatusBadge status={job.status} />
             </p>
-            {job.serviceAmount != null && (
+            {showFinancials && job.serviceAmount != null && (
               <p>
                 <span className="font-medium text-slate-700">Service amount:</span>{" "}
                 <span className="font-semibold text-emerald-700">
@@ -234,14 +240,22 @@ export default function JobDetailPage() {
               </p>
             )}
             <p>
-              <span className="font-medium text-slate-700">Received date:</span>{" "}
-              {new Date(job.receivedAt).toLocaleDateString("en-IN")} (
-              {daysSince(new Date(job.receivedAt))} days ago)
+              <span className="font-medium text-slate-700">Received:</span>{" "}
+              {formatDateTime(job.receivedAt)}
+              <span className="ml-1 text-slate-500">
+                ({daysSince(new Date(job.receivedAt))} days ago)
+              </span>
             </p>
+            {job.readyAt && (
+              <p>
+                <span className="font-medium text-slate-700">Completed:</span>{" "}
+                {formatDateTime(job.readyAt)}
+              </p>
+            )}
             {job.deliveredAt && (
               <p>
-                <span className="font-medium text-slate-700">Delivered date:</span>{" "}
-                {new Date(job.deliveredAt).toLocaleDateString("en-IN")}
+                <span className="font-medium text-slate-700">Delivered:</span>{" "}
+                {formatDateTime(job.deliveredAt)}
               </p>
             )}
             <p>
@@ -266,12 +280,6 @@ export default function JobDetailPage() {
               <p>
                 <span className="font-medium text-slate-700">Condition:</span>{" "}
                 {job.physicalCondition}
-              </p>
-            )}
-            {job.readyAt && (
-              <p>
-                <span className="font-medium text-slate-700">Ready:</span>{" "}
-                {new Date(job.readyAt).toLocaleDateString("en-IN")}
               </p>
             )}
           </div>

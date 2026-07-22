@@ -9,34 +9,21 @@ export async function GET() {
     return NextResponse.json({ error: "Technician only" }, { status: 403 });
   }
 
-  const technicianId = session.technicianId;
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+  const assigned = { assignedTechnicianId: session.technicianId };
 
-  const assigned = { assignedTechnicianId: technicianId };
-  const completedBy = { completedByTechnicianId: technicianId };
-
-  const [pendingJobs, readyJobs, deliveredThisMonth] = await Promise.all([
+  const [pendingJobs, readyJobs, waitingApprovalJobs, returnJobs] = await Promise.all([
+    prisma.jobCard.count({ where: { ...assigned, status: "Pending" } }),
+    prisma.jobCard.count({ where: { ...assigned, status: "Ready" } }),
     prisma.jobCard.count({
-      where: { ...assigned, status: "Pending" },
+      where: { ...assigned, status: "WaitingForCustomerApproval" },
     }),
-    prisma.jobCard.count({
-      where: { ...assigned, status: "Ready" },
-    }),
-    prisma.jobCard.count({
-      where: {
-        ...completedBy,
-        status: "Delivered",
-        deliveredAt: { gte: monthStart, lt: nextMonth },
-      },
-    }),
+    prisma.jobCard.count({ where: { ...assigned, status: "Return" } }),
   ]);
 
   return NextResponse.json({
     pendingJobs,
     readyJobs,
-    deliveredThisMonth,
+    waitingApprovalJobs,
+    returnJobs,
   });
 }

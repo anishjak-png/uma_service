@@ -26,6 +26,28 @@ export function normalizeMobile(mobile: string): string {
   return mobile.replace(/\D/g, "").slice(-10);
 }
 
+export type SearchQueryType = "empty" | "mobile" | "ut" | "name";
+
+export function detectSearchQueryType(q: string): SearchQueryType {
+  const trimmed = q.trim();
+  if (!trimmed) return "empty";
+
+  const compact = trimmed.replace(/\s+/g, " ");
+  if (/^ut\s*\d+$/i.test(compact)) return "ut";
+
+  const mobile = normalizeMobile(trimmed);
+  if (mobile.length === 10 && /^[\d\s+\-()]+$/.test(trimmed)) return "mobile";
+
+  return "name";
+}
+
+/** Normalizes "ut1", "UT  12" → "UT 12" for exact job number lookup. */
+export function normalizeJobNumberQuery(q: string): string {
+  const match = q.trim().match(/^ut\s*(\d+)$/i);
+  if (match) return `UT ${match[1]}`;
+  return q.trim().toUpperCase();
+}
+
 export function formatMobileDisplay(mobile: string): string {
   const digits = normalizeMobile(mobile);
   if (digits.length !== 10) return mobile;
@@ -35,6 +57,19 @@ export function formatMobileDisplay(mobile: string): string {
 export function daysSince(date: Date): number {
   const diff = Date.now() - date.getTime();
   return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+/** Date and time for job timestamps (received, completed, delivered). */
+export function formatDateTime(iso: string | Date): string {
+  const date = typeof iso === "string" ? new Date(iso) : iso;
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 export function parseProductPhotos(raw: string | null | undefined): string[] {

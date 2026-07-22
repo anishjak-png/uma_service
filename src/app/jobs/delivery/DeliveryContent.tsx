@@ -16,54 +16,51 @@ type DeliveryJob = {
   customer: { mobile: string; name?: string | null };
 };
 
+const DELIVERY_STATUSES = new Set(["Ready", "Return"]);
+
 export default function DeliveryContent() {
   const searchParams = useSearchParams();
   const initialQ = searchParams.get("q") ?? "";
 
   const [query, setQuery] = useState(initialQ);
   const [results, setResults] = useState<DeliveryJob[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
 
-  const search = useCallback(async (q: string) => {
-    if (!q.trim()) return;
-
+  const loadJobs = useCallback(async (q: string) => {
     setLoading(true);
     setSuccessMsg("");
-    const params = new URLSearchParams({ q: q.trim() });
+    const params = new URLSearchParams({ delivery: "true" });
+    if (q.trim()) params.set("q", q.trim());
 
     const res = await fetch(`/api/jobs?${params}`);
     if (!res.ok) {
       setResults([]);
-      setSearched(true);
       setLoading(false);
-      alert("Search failed");
+      if (q.trim()) alert("Search failed");
       return;
     }
 
     const data = await res.json();
-    setResults(Array.isArray(data) ? data : []);
-    setSearched(true);
+    setResults(
+      Array.isArray(data)
+        ? data.filter((j: DeliveryJob) => DELIVERY_STATUSES.has(j.status))
+        : []
+    );
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (initialQ) search(initialQ);
-  }, [initialQ, search]);
+    loadJobs(initialQ);
+  }, [initialQ, loadJobs]);
 
   function handleSearch(e: FormEvent) {
     e.preventDefault();
-    search(query);
+    loadJobs(query);
   }
 
   async function markDelivered(job: DeliveryJob) {
-    if (job.status === "Delivered") {
-      alert(`${job.jobNumber} is already delivered.`);
-      return;
-    }
-
     if (!confirm(`Mark ${job.jobNumber} as delivered?`)) return;
 
     setDeliveringId(job.id);
@@ -84,30 +81,45 @@ export default function DeliveryContent() {
     setDeliveringId(null);
   }
 
-  const deliverable = results.filter((j) => j.status !== "Delivered");
-  const delivered = results.filter((j) => j.status === "Delivered");
+  const hasSearch = query.trim().length > 0;
 
   return (
     <AppShell>
       <div className="space-y-4">
-        <PageHeader title="Delivery" description="Search job card and mark delivered" />
+        <PageHeader
+          title="Delivery"
+          description="Ready and return-to-customer jobs only"
+        />
 
         <form onSubmit={handleSearch} className="space-y-3">
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="UT number or mobile number"
+            placeholder="Search UT number or mobile number"
             className="flex h-12 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-lg placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             autoFocus
           />
-          <button
-            type="submit"
-            disabled={loading || !query.trim()}
-            className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {loading ? "Searching…" : "Find Job"}
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="submit"
+              disabled={loading || !query.trim()}
+              className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {loading && hasSearch ? "Searching…" : "Search"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                loadJobs("");
+              }}
+              disabled={loading}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Show All
+            </button>
+          </div>
         </form>
 
         {successMsg && (
@@ -116,13 +128,22 @@ export default function DeliveryContent() {
           </div>
         )}
 
-        {searched && !loading && results.length === 0 && (
-          <p className="text-center text-slate-500">No jobs found</p>
-        )}
-
-        {deliverable.length > 0 && (
+        {loading ? (
+          <p className="text-center text-slate-500">Loading…</p>
+        ) : results.length === 0 ? (
+          <p className="text-center text-slate-500">
+            {hasSearch
+              ? "No ready or return jobs found for this search"
+              : "No jobs ready for delivery"}
+          </p>
+        ) : (
           <div className="space-y-2">
-            {deliverable.map((job) => (
+            {!hasSearch && (
+              <p className="text-sm font-medium text-slate-600">
+                {results.length} job{results.length === 1 ? "" : "s"} ready for pickup
+              </p>
+            )}
+            {results.map((job) => (
               <JobListCard
                 key={job.id}
                 id={job.id}
@@ -141,23 +162,6 @@ export default function DeliveryContent() {
                     {deliveringId === job.id ? "Updating…" : "Delivered"}
                   </button>
                 }
-              />
-            ))}
-          </div>
-        )}
-
-        {delivered.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-500">Already delivered</p>
-            {delivered.map((job) => (
-              <JobListCard
-                key={job.id}
-                id={job.id}
-                jobNumber={job.jobNumber}
-                status={job.status}
-                customerName={job.customer.name}
-                mobile={job.customer.mobile}
-                applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
               />
             ))}
           </div>

@@ -8,6 +8,7 @@ import { SHOP_NAME } from "@/lib/constants";
 type StaffRole = "reception" | "technician" | "admin";
 
 const receptionQuickActions = [
+  { href: "/dashboard", label: "Home" },
   { href: "/jobs/new", label: "New Job" },
   { href: "/jobs/delivery", label: "Delivery" },
   { href: "/jobs/search", label: "Search" },
@@ -75,7 +76,7 @@ export function AppNav() {
       </header>
       {showReceptionQuickActions ? (
         <nav className="border-b border-emerald-700 bg-emerald-900">
-          <div className="mx-auto grid max-w-lg grid-cols-3 gap-2 p-3">
+          <div className="mx-auto grid max-w-lg grid-cols-4 gap-2 p-3">
             {receptionQuickActions.map((action) => {
               const active =
                 pathname === action.href ||

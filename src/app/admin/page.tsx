@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 type Technician = {
@@ -32,8 +32,21 @@ type Customer = {
 
 export default function AdminPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<AdminTab>("technicians");
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const requested = searchParams.get("tab");
+    if (
+      requested === "technicians" ||
+      requested === "appliances" ||
+      requested === "customers" ||
+      requested === "reports"
+    ) {
+      setTab(requested);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -585,14 +598,20 @@ function CustomersTab() {
 
 function ReportsTab() {
   const [period, setPeriod] = useState<"today" | "month" | "year">("today");
-  const [report, setReport] = useState<{
-    period: string;
+  const [reportSection, setReportSection] = useState<
+    "summary" | "technicians" | "brands-appliances"
+  >("summary");
+  const [summary, setSummary] = useState<{
     summary: {
       jobsReceived: number;
       jobsDelivered: number;
       totalJobs: number;
       totalCollection: number;
     };
+    pendingAging: { over3Days: number; over7Days: number; over15Days: number };
+    readyNotDelivered: { count: number; totalAmount: number };
+  } | null>(null);
+  const [technicianData, setTechnicianData] = useState<{
     assignedWorkloadReports: Array<{
       name: string;
       totalAssigned: number;
@@ -609,6 +628,8 @@ function ReportsTab() {
       lowestBill: number;
       highestBill: number;
     }>;
+  } | null>(null);
+  const [brandData, setBrandData] = useState<{
     applianceReports: Array<{
       applianceType: string;
       totalJobs: number;
@@ -620,17 +641,43 @@ function ReportsTab() {
       totalJobs: number;
       totalCollection: number;
     }>;
-    pendingAging: { over3Days: number; over7Days: number; over15Days: number };
-    readyNotDelivered: { count: number; totalAmount: number };
   } | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/admin/reports/service?period=${period}`)
+    setLoading(true);
+    fetch(`/api/admin/reports/service?period=${period}&section=summary`)
       .then((r) => r.json())
-      .then(setReport);
+      .then(setSummary)
+      .finally(() => setLoading(false));
+    setTechnicianData(null);
+    setBrandData(null);
+    if (reportSection === "technicians") {
+      fetch(`/api/admin/reports/service?period=${period}&section=technicians`)
+        .then((r) => r.json())
+        .then(setTechnicianData);
+    } else if (reportSection === "brands-appliances") {
+      fetch(`/api/admin/reports/service?period=${period}&section=brands-appliances`)
+        .then((r) => r.json())
+        .then(setBrandData);
+    }
   }, [period]);
 
-  const formatRs = (n: number) => `Rs.${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  useEffect(() => {
+    if (reportSection === "technicians" && !technicianData) {
+      fetch(`/api/admin/reports/service?period=${period}&section=technicians`)
+        .then((r) => r.json())
+        .then(setTechnicianData);
+    }
+    if (reportSection === "brands-appliances" && !brandData) {
+      fetch(`/api/admin/reports/service?period=${period}&section=brands-appliances`)
+        .then((r) => r.json())
+        .then(setBrandData);
+    }
+  }, [reportSection, period, technicianData, brandData]);
+
+  const formatRs = (n: number) =>
+    `Rs.${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
   return (
     <div className="space-y-6">
@@ -657,26 +704,55 @@ function ReportsTab() {
         ))}
       </div>
 
-      {report && (
+      <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+        {(
+          [
+            { id: "summary", label: "Overview" },
+            { id: "technicians", label: "Technicians" },
+            { id: "brands-appliances", label: "Brands & Appliances" },
+          ] as const
+        ).map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setReportSection(s.id)}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+              reportSection === s.id
+                ? "bg-emerald-600 text-white"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && !summary && (
+        <p className="text-center text-slate-500">Loading reports…</p>
+      )}
+
+      {reportSection === "summary" && summary && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label={period === "today" ? "Jobs Received Today" : "Total Jobs"}
-              value={period === "today" ? report.summary.jobsReceived : report.summary.totalJobs}
+              value={
+                period === "today" ? summary.summary.jobsReceived : summary.summary.totalJobs
+              }
             />
             <StatCard
               label={period === "today" ? "Delivered Today" : "Jobs Delivered"}
-              value={report.summary.jobsDelivered}
+              value={summary.summary.jobsDelivered}
             />
             <StatCard
               label="Total Collection"
-              value={formatRs(report.summary.totalCollection)}
+              value={formatRs(summary.summary.totalCollection)}
               valueClassName="text-emerald-800"
             />
             <StatCard
               label="Ready (Not Delivered)"
-              value={report.readyNotDelivered.count}
-              subtext={formatRs(report.readyNotDelivered.totalAmount)}
+              value={summary.readyNotDelivered.count}
+              subtext={formatRs(summary.readyNotDelivered.totalAmount)}
               href="/jobs/search?status=Ready"
             />
           </div>
@@ -688,123 +764,141 @@ function ReportsTab() {
             <CardContent className="grid gap-3 sm:grid-cols-3 text-sm">
               <div className="rounded-md bg-amber-50 p-3">
                 <p className="text-slate-600">&gt; 3 days</p>
-                <p className="text-xl font-bold text-amber-800">{report.pendingAging.over3Days}</p>
+                <p className="text-xl font-bold text-amber-800">
+                  {summary.pendingAging.over3Days}
+                </p>
               </div>
               <div className="rounded-md bg-orange-50 p-3">
                 <p className="text-slate-600">&gt; 7 days</p>
-                <p className="text-xl font-bold text-orange-800">{report.pendingAging.over7Days}</p>
+                <p className="text-xl font-bold text-orange-800">
+                  {summary.pendingAging.over7Days}
+                </p>
               </div>
               <div className="rounded-md bg-red-50 p-3">
                 <p className="text-slate-600">&gt; 15 days</p>
-                <p className="text-xl font-bold text-red-800">{report.pendingAging.over15Days}</p>
+                <p className="text-xl font-bold text-red-800">
+                  {summary.pendingAging.over15Days}
+                </p>
               </div>
             </CardContent>
           </Card>
+        </>
+      )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Assigned Workload</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <p className="mb-3 text-xs text-slate-500">
-                Based on assigned technician — for work allocation and pending tracking.
-              </p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-slate-500">
-                    <th className="pb-2 pr-4">Technician</th>
-                    <th className="pb-2 pr-4">Assigned</th>
-                    <th className="pb-2 pr-4">Pending</th>
-                    <th className="pb-2 pr-4">Ready</th>
-                    <th className="pb-2 pr-4">Waiting</th>
-                    <th className="pb-2">Return</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.assignedWorkloadReports.map((row) => (
-                    <tr key={row.name} className="border-b border-slate-100">
-                      <td className="py-2 pr-4 font-medium">{row.name}</td>
-                      <td className="py-2 pr-4">{row.totalAssigned}</td>
-                      <td className="py-2 pr-4">{row.pending}</td>
-                      <td className="py-2 pr-4">{row.ready}</td>
-                      <td className="py-2 pr-4">{row.waitingForApproval}</td>
-                      <td className="py-2">{row.return}</td>
-                    </tr>
+      {reportSection === "technicians" && (
+        <>
+          {!technicianData ? (
+            <p className="text-center text-slate-500">Loading technician reports…</p>
+          ) : (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Assigned Workload</CardTitle>
+                </CardHeader>
+                <CardContent className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="pb-2 pr-4">Technician</th>
+                        <th className="pb-2 pr-4">Assigned</th>
+                        <th className="pb-2 pr-4">Pending</th>
+                        <th className="pb-2 pr-4">Ready</th>
+                        <th className="pb-2 pr-4">Waiting</th>
+                        <th className="pb-2">Return</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {technicianData.assignedWorkloadReports.map((row) => (
+                        <tr key={row.name} className="border-b border-slate-100">
+                          <td className="py-2 pr-4 font-medium">{row.name}</td>
+                          <td className="py-2 pr-4">{row.totalAssigned}</td>
+                          <td className="py-2 pr-4">{row.pending}</td>
+                          <td className="py-2 pr-4">{row.ready}</td>
+                          <td className="py-2 pr-4">{row.waitingForApproval}</td>
+                          <td className="py-2">{row.return}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Completed By Technician</CardTitle>
+                </CardHeader>
+                <CardContent className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="pb-2 pr-4">Technician</th>
+                        <th className="pb-2 pr-4">Completed</th>
+                        <th className="pb-2 pr-4">Collection</th>
+                        <th className="pb-2 pr-4">Avg Bill</th>
+                        <th className="pb-2 pr-4">Lowest</th>
+                        <th className="pb-2">Highest</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {technicianData.completedByReports.map((row) => (
+                        <tr key={row.name} className="border-b border-slate-100">
+                          <td className="py-2 pr-4 font-medium">{row.name}</td>
+                          <td className="py-2 pr-4">{row.totalCompletedJobs}</td>
+                          <td className="py-2 pr-4">{formatRs(row.totalCollection)}</td>
+                          <td className="py-2 pr-4">{formatRs(Math.round(row.averageBill))}</td>
+                          <td className="py-2 pr-4">{formatRs(row.lowestBill)}</td>
+                          <td className="py-2">{formatRs(row.highestBill)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </>
+      )}
+
+      {reportSection === "brands-appliances" && (
+        <>
+          {!brandData ? (
+            <p className="text-center text-slate-500">Loading brand & appliance reports…</p>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Appliance-wise</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  {brandData.applianceReports.map((row) => (
+                    <div key={row.applianceType} className="flex justify-between gap-2">
+                      <span className="text-slate-700">{row.applianceType}</span>
+                      <span className="text-right text-slate-900">
+                        {row.totalJobs} jobs · {formatRs(row.totalCollection)} · avg{" "}
+                        {formatRs(Math.round(row.averageServiceAmount))}
+                      </span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Completed By Technician Reports</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <p className="mb-3 text-xs text-slate-500">
-                Based on who marked the job Ready — for repair completion and collection metrics.
-              </p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-slate-500">
-                    <th className="pb-2 pr-4">Technician</th>
-                    <th className="pb-2 pr-4">Completed</th>
-                    <th className="pb-2 pr-4">Collection</th>
-                    <th className="pb-2 pr-4">Avg Bill</th>
-                    <th className="pb-2 pr-4">Lowest</th>
-                    <th className="pb-2">Highest</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.completedByReports.map((row) => (
-                    <tr key={row.name} className="border-b border-slate-100">
-                      <td className="py-2 pr-4 font-medium">{row.name}</td>
-                      <td className="py-2 pr-4">{row.totalCompletedJobs}</td>
-                      <td className="py-2 pr-4">{formatRs(row.totalCollection)}</td>
-                      <td className="py-2 pr-4">{formatRs(Math.round(row.averageBill))}</td>
-                      <td className="py-2 pr-4">{formatRs(row.lowestBill)}</td>
-                      <td className="py-2">{formatRs(row.highestBill)}</td>
-                    </tr>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Brand-wise</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  {brandData.brandReports.map((row) => (
+                    <div key={row.brand} className="flex justify-between">
+                      <span className="text-slate-700">{row.brand}</span>
+                      <span className="font-semibold text-slate-900">
+                        {row.totalJobs} · {formatRs(row.totalCollection)}
+                      </span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Appliance-wise</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {report.applianceReports.map((row) => (
-                  <div key={row.applianceType} className="flex justify-between gap-2">
-                    <span className="text-slate-700">{row.applianceType}</span>
-                    <span className="text-right text-slate-900">
-                      {row.totalJobs} jobs · {formatRs(row.totalCollection)} · avg{" "}
-                      {formatRs(Math.round(row.averageServiceAmount))}
-                    </span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Brand-wise</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {report.brandReports.map((row) => (
-                  <div key={row.brand} className="flex justify-between">
-                    <span className="text-slate-700">{row.brand}</span>
-                    <span className="font-semibold text-slate-900">
-                      {row.totalJobs} · {formatRs(row.totalCollection)}
-                    </span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </>
       )}
     </div>

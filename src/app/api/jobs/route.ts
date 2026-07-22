@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import {
   generateJobNumber,
   normalizeMobile,
+  normalizeJobNumberQuery,
+  detectSearchQueryType,
   recordStatusChange,
 } from "@/lib/jobs";
 import {
@@ -25,6 +27,7 @@ export async function GET(request: NextRequest) {
   const q = searchParams.get("q")?.trim() ?? "";
   const status = searchParams.get("status");
   const activeOnly = searchParams.get("active") === "true";
+  const deliveryOnly = searchParams.get("delivery") === "true";
   const scopeParam = searchParams.get("scope");
 
   const where: Record<string, unknown> = {};
@@ -37,22 +40,28 @@ export async function GET(request: NextRequest) {
   }
 
   if (q) {
-    const mobile = normalizeMobile(q);
-    const searchUpper = q.toUpperCase();
-    where.OR = [
-      { jobNumber: { contains: searchUpper, mode: "insensitive" } },
-      { customer: { mobile: { contains: mobile } } },
-      { customer: { name: { contains: q, mode: "insensitive" } } },
-    ];
+    const searchType = detectSearchQueryType(q);
+
+    if (searchType === "ut") {
+      where.jobNumber = normalizeJobNumberQuery(q);
+    } else if (searchType === "mobile") {
+      where.customer = { mobile: normalizeMobile(q) };
+    } else {
+      where.OR = [
+        { customer: { name: { contains: q, mode: "insensitive" } } },
+      ];
+    }
   }
 
   if (status && status !== "all") {
     where.status = status as JobStatus;
+  } else if (deliveryOnly) {
+    where.status = { in: ["Ready", "Return"] };
   } else if (activeOnly) {
     where.status = { in: [...ACTIVE_STATUSES] };
   }
 
-  const isMobileSearch = normalizeMobile(q).length === 10 && /^\d[\d\s-]*$/.test(q.trim());
+  const isMobileSearch = detectSearchQueryType(q) === "mobile";
 
   const jobs = await prisma.jobCard.findMany({
     where,
@@ -60,7 +69,7 @@ export async function GET(request: NextRequest) {
       customer: true,
       assignedTechnician: true,
     },
-    orderBy: { receivedAt: "desc" },
+    orderBy: deliveryOnly && !q ? { readyAt: "desc" } : { receivedAt: "desc" },
     take: isMobileSearch ? 100 : 50,
   });
 

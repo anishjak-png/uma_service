@@ -9,6 +9,7 @@ import {
   useTechnicianJobScope,
 } from "@/components/TechnicianJobScopeToggle";
 import { ACTIVE_STATUSES } from "@/lib/constants";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 type PendingJob = {
@@ -19,7 +20,6 @@ type PendingJob = {
   brand: string;
   complaint: string;
   receivedAt: string;
-  serviceAmount?: number | null;
   assignedTechnician?: { name: string } | null;
   customer: { mobile: string; name?: string | null };
 };
@@ -27,7 +27,8 @@ type PendingJob = {
 type TechnicianStats = {
   pendingJobs: number;
   readyJobs: number;
-  deliveredThisMonth: number;
+  waitingApprovalJobs: number;
+  returnJobs: number;
 };
 
 export default function PendingJobsPage() {
@@ -93,9 +94,54 @@ export default function PendingJobsPage() {
       />
 
       {isTechnician && (
-        <div className="mb-4">
-          <TechnicianJobScopeToggle scope={scope} onChange={setScope} />
-        </div>
+        <>
+          <div className="mb-4">
+            <TechnicianJobScopeToggle scope={scope} onChange={setScope} />
+          </div>
+
+          {stats && (
+            <div className="mb-6 grid grid-cols-2 gap-3">
+              <StatCard
+                label="My Pending"
+                value={stats.pendingJobs}
+                valueClassName="text-blue-700"
+              />
+              <StatCard
+                label="My Ready"
+                value={stats.readyJobs}
+                valueClassName="text-emerald-700"
+              />
+              <StatCard
+                label="Waiting Approval"
+                value={stats.waitingApprovalJobs}
+                valueClassName="text-amber-700"
+              />
+              <StatCard
+                label="My Return"
+                value={stats.returnJobs}
+              />
+            </div>
+          )}
+
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <Link
+              href="/jobs/search"
+              className="rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Search
+            </Link>
+            <Link
+              href={jobs[0] ? `/jobs/${jobs[0].id}` : "/jobs/search"}
+              className="rounded-md bg-emerald-600 py-2.5 text-center text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              Update Status
+            </Link>
+          </div>
+
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            {scope === "my" ? "My Assigned Jobs" : "All Active Jobs"}
+          </h3>
+        </>
       )}
 
       {loading ? (
@@ -109,7 +155,7 @@ export default function PendingJobsPage() {
           </p>
         </div>
       ) : (
-        <div className="mb-6 space-y-2">
+        <div className="space-y-2">
           {jobs.map((job) => (
             <JobListCard
               key={job.id}
@@ -120,7 +166,7 @@ export default function PendingJobsPage() {
               mobile={job.customer.mobile}
               applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
               complaint={job.complaint}
-              serviceAmount={job.serviceAmount}
+              showServiceAmount={!isTechnician}
               meta={
                 job.assignedTechnician
                   ? `Assigned: ${job.assignedTechnician.name}`
@@ -128,25 +174,6 @@ export default function PendingJobsPage() {
               }
             />
           ))}
-        </div>
-      )}
-
-      {isTechnician && stats && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <StatCard
-            label="My Pending Jobs"
-            value={stats.pendingJobs}
-            valueClassName="text-blue-700"
-          />
-          <StatCard
-            label="My Ready Jobs"
-            value={stats.readyJobs}
-            valueClassName="text-emerald-700"
-          />
-          <StatCard
-            label="My Delivered (This Month)"
-            value={stats.deliveredThisMonth}
-          />
         </div>
       )}
     </AppShell>

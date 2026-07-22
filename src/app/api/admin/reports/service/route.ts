@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { CACHE_TTL, getCached, setCache } from "@/lib/cache";
 import { daysAgo, getPeriodRange, type ReportPeriod } from "@/lib/reports";
+
+type ReportSection = "summary" | "technicians" | "brands-appliances";
 
 function sumAmount(jobs: { serviceAmount: number | null }[]) {
   return jobs.reduce((total, job) => total + (job.serviceAmount ?? 0), 0);
@@ -21,21 +24,12 @@ function billRange(jobs: { serviceAmount: number | null }[]) {
   return { lowest: Math.min(...amounts), highest: Math.max(...amounts) };
 }
 
-export async function GET(request: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) {
-    return NextResponse.json({ error: "Admin only" }, { status: 403 });
-  }
-
-  const period = (request.nextUrl.searchParams.get("period") ?? "today") as ReportPeriod;
-  const { start, end } = getPeriodRange(period);
-
+async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
   const [
     jobsReceived,
     jobsDelivered,
     deliveredInPeriod,
     allJobsInPeriod,
-    technicians,
     readyJobs,
     pendingJobs,
   ] = await Promise.all([
@@ -43,33 +37,14 @@ export async function GET(request: NextRequest) {
       where: { receivedAt: { gte: start, lt: end } },
     }),
     prisma.jobCard.count({
-      where: {
-        status: "Delivered",
-        deliveredAt: { gte: start, lt: end },
-      },
+      where: { status: "Delivered", deliveredAt: { gte: start, lt: end } },
     }),
     prisma.jobCard.findMany({
-      where: {
-        status: "Delivered",
-        deliveredAt: { gte: start, lt: end },
-      },
+      where: { status: "Delivered", deliveredAt: { gte: start, lt: end } },
       select: { serviceAmount: true },
     }),
-    prisma.jobCard.findMany({
+    prisma.jobCard.count({
       where: { receivedAt: { gte: start, lt: end } },
-      select: {
-        id: true,
-        status: true,
-        serviceAmount: true,
-        applianceType: true,
-        brand: true,
-        assignedTechnicianId: true,
-        receivedAt: true,
-      },
-    }),
-    prisma.technician.findMany({
-      where: { active: true },
-      select: { id: true, name: true },
     }),
     prisma.jobCard.findMany({
       where: { status: "Ready" },
@@ -81,7 +56,31 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
-  const totalCollection = sumAmount(deliveredInPeriod);
+  return {
+    period,
+    summary: {
+      jobsReceived,
+      jobsDelivered,
+      totalJobs: allJobsInPeriod,
+      totalCollection: sumAmount(deliveredInPeriod),
+    },
+    pendingAging: {
+      over3Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(3)).length,
+      over7Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(7)).length,
+      over15Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(15)).length,
+    },
+    readyNotDelivered: {
+      count: readyJobs.length,
+      totalAmount: sumAmount(readyJobs),
+    },
+  };
+}
+
+async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Date) {
+  const technicians = await prisma.technician.findMany({
+    where: { active: true },
+    select: { id: true, name: true },
+  });
 
   const assignedWorkloadReports = await Promise.all(
     technicians.map(async (tech) => {
@@ -104,12 +103,11 @@ export async function GET(request: NextRequest) {
 
   const completedByReports = await Promise.all(
     technicians.map(async (tech) => {
-      const completedInPeriod = await prisma.jobCard.findMany({
+      const completedInPeriod = await prisma.jobCard.count({
         where: {
           completedByTechnicianId: tech.id,
           readyAt: { gte: start, lt: end },
         },
-        select: { id: true },
       });
 
       const delivered = await prisma.jobCard.findMany({
@@ -125,7 +123,7 @@ export async function GET(request: NextRequest) {
 
       return {
         name: tech.name,
-        totalCompletedJobs: completedInPeriod.length,
+        totalCompletedJobs: completedInPeriod,
         totalCollection: sumAmount(delivered),
         averageBill: avgAmount(delivered),
         lowestBill: lowest,
@@ -134,80 +132,73 @@ export async function GET(request: NextRequest) {
     })
   );
 
-  const applianceTypes = [
-    ...new Set(allJobsInPeriod.map((j) => j.applianceType)),
-  ].sort();
+  return { period, assignedWorkloadReports, completedByReports };
+}
 
-  const applianceReports = await Promise.all(
-    applianceTypes.map(async (applianceType) => {
-      const jobs = await prisma.jobCard.findMany({
-        where: {
-          applianceType,
-          receivedAt: { gte: start, lt: end },
-        },
-        select: { serviceAmount: true, status: true },
-      });
-      const billable = jobs.filter(
-        (j) => j.serviceAmount != null && j.status !== "Pending"
-      );
-      return {
-        applianceType,
-        totalJobs: jobs.length,
-        totalCollection: sumAmount(
-          jobs.filter((j) => j.status === "Delivered")
-        ),
-        averageServiceAmount: avgAmount(billable),
-      };
-    })
-  );
-
-  const brands = [...new Set(allJobsInPeriod.map((j) => j.brand))].sort();
-
-  const brandReports = await Promise.all(
-    brands.map(async (brand) => {
-      const jobs = await prisma.jobCard.findMany({
-        where: {
-          brand,
-          receivedAt: { gte: start, lt: end },
-        },
-        select: { serviceAmount: true, status: true },
-      });
-      return {
-        brand,
-        totalJobs: jobs.length,
-        totalCollection: sumAmount(
-          jobs.filter((j) => j.status === "Delivered")
-        ),
-      };
-    })
-  );
-
-  const pendingAging = {
-    over3Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(3)).length,
-    over7Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(7)).length,
-    over15Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(15)).length,
-  };
-
-  return NextResponse.json({
-    period,
-    summary: {
-      jobsReceived,
-      jobsDelivered,
-      totalJobs: allJobsInPeriod.length,
-      totalCollection,
-    },
-    assignedWorkloadReports,
-    completedByReports,
-    applianceReports,
-    brandReports,
-    pendingAging,
-    readyNotDelivered: {
-      count: readyJobs.length,
-      totalAmount: sumAmount(readyJobs),
-    },
-    pendingCollection: {
-      count: pendingJobs.length,
-      totalAmount: 0,
-    },
+async function buildBrandApplianceReports(period: ReportPeriod, start: Date, end: Date) {
+  const jobsInPeriod = await prisma.jobCard.findMany({
+    where: { receivedAt: { gte: start, lt: end } },
+    select: { serviceAmount: true, status: true, applianceType: true, brand: true },
   });
+
+  const applianceTypes = [...new Set(jobsInPeriod.map((j) => j.applianceType))].sort();
+  const brands = [...new Set(jobsInPeriod.map((j) => j.brand))].sort();
+
+  const applianceReports = applianceTypes.map((applianceType) => {
+    const jobs = jobsInPeriod.filter((j) => j.applianceType === applianceType);
+    const billable = jobs.filter(
+      (j) => j.serviceAmount != null && j.status !== "Pending"
+    );
+    return {
+      applianceType,
+      totalJobs: jobs.length,
+      totalCollection: sumAmount(jobs.filter((j) => j.status === "Delivered")),
+      averageServiceAmount: avgAmount(billable),
+    };
+  });
+
+  const brandReports = brands.map((brand) => {
+    const jobs = jobsInPeriod.filter((j) => j.brand === brand);
+    return {
+      brand,
+      totalJobs: jobs.length,
+      totalCollection: sumAmount(jobs.filter((j) => j.status === "Delivered")),
+    };
+  });
+
+  return { period, applianceReports, brandReports };
+}
+
+export async function GET(request: NextRequest) {
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  }
+
+  const period = (request.nextUrl.searchParams.get("period") ?? "today") as ReportPeriod;
+  const section = (request.nextUrl.searchParams.get("section") ??
+    "summary") as ReportSection;
+  const { start, end } = getPeriodRange(period);
+
+  const cacheKey = `reports:${section}:${period}`;
+  const cached = getCached<unknown>(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached);
+  }
+
+  let data: unknown;
+
+  if (section === "technicians") {
+    data = await buildTechnicianReports(period, start, end);
+  } else if (section === "brands-appliances") {
+    data = await buildBrandApplianceReports(period, start, end);
+  } else {
+    data = await buildSummary(period, start, end);
+  }
+
+  const ttl =
+    period === "today" ? CACHE_TTL.todayCollection : CACHE_TTL.reports;
+  setCache(cacheKey, data, ttl);
+
+  return NextResponse.json(data);
 }
