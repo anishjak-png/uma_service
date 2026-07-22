@@ -35,7 +35,17 @@ export default function AdminContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { role, isLoggedIn, loaded: authLoaded } = useAuth();
-  const [tab, setTab] = useState<AdminTab>("technicians");
+
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab: AdminTab =
+    tabFromUrl === "reports" ||
+    tabFromUrl === "technicians" ||
+    tabFromUrl === "appliances" ||
+    tabFromUrl === "customers"
+      ? tabFromUrl
+      : "technicians";
+
+  const [tab, setTab] = useState<AdminTab>(initialTab);
 
   useEffect(() => {
     const requested = searchParams.get("tab");
@@ -46,8 +56,21 @@ export default function AdminContent() {
       requested === "reports"
     ) {
       setTab(requested);
+    } else if (!requested) {
+      setTab("technicians");
     }
   }, [searchParams]);
+
+  function handleTabChange(next: AdminTab) {
+    setTab(next);
+    router.replace(`/admin?tab=${next}`, { scroll: false });
+  }
+
+  function handleSettingsTabChange(
+    next: "technicians" | "appliances" | "customers"
+  ) {
+    handleTabChange(next);
+  }
 
   useEffect(() => {
     if (!authLoaded) return;
@@ -68,8 +91,20 @@ export default function AdminContent() {
 
   return (
     <AppShell>
-      <PageHeader title="Admin" description="Technicians, appliances, customers, and reports" />
-      <AdminTabs active={tab} onChange={setTab} />
+      <PageHeader
+        title={tab === "reports" ? "Reports" : "Admin"}
+        description={
+          tab === "reports"
+            ? "Service and billing analytics"
+            : "Technicians, appliances, and customers"
+        }
+      />
+      {tab !== "reports" && (
+        <AdminTabs
+          active={tab as "technicians" | "appliances" | "customers"}
+          onChange={handleSettingsTabChange}
+        />
+      )}
       {tab === "technicians" && <TechniciansTab />}
       {tab === "appliances" && <AppliancesTab />}
       {tab === "customers" && <CustomersTab />}
@@ -638,37 +673,65 @@ function ReportsTab() {
       totalCollection: number;
     }>;
   } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/admin/reports/service?period=${period}&section=summary`)
-      .then((r) => r.json())
-      .then(setSummary)
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function loadSummary() {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch(
+          `/api/admin/reports/service?period=${period}&section=summary`
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error ?? "Failed to load reports");
+        }
+        if (!cancelled) setSummary(data);
+      } catch (err) {
+        if (!cancelled) {
+          setSummary(null);
+          setError(err instanceof Error ? err.message : "Failed to load reports");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadSummary();
     setTechnicianData(null);
     setBrandData(null);
-    if (reportSection === "technicians") {
-      fetch(`/api/admin/reports/service?period=${period}&section=technicians`)
-        .then((r) => r.json())
-        .then(setTechnicianData);
-    } else if (reportSection === "brands-appliances") {
-      fetch(`/api/admin/reports/service?period=${period}&section=brands-appliances`)
-        .then((r) => r.json())
-        .then(setBrandData);
-    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [period]);
 
   useEffect(() => {
     if (reportSection === "technicians" && !technicianData) {
       fetch(`/api/admin/reports/service?period=${period}&section=technicians`)
-        .then((r) => r.json())
-        .then(setTechnicianData);
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "Failed to load technician reports");
+          setTechnicianData(data);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Failed to load technician reports");
+        });
     }
     if (reportSection === "brands-appliances" && !brandData) {
       fetch(`/api/admin/reports/service?period=${period}&section=brands-appliances`)
-        .then((r) => r.json())
-        .then(setBrandData);
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "Failed to load brand reports");
+          setBrandData(data);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Failed to load brand reports");
+        });
     }
   }, [reportSection, period, technicianData, brandData]);
 
@@ -723,7 +786,11 @@ function ReportsTab() {
         ))}
       </div>
 
-      {loading && !summary && (
+      {error && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+      )}
+
+      {loading && reportSection === "summary" && !summary && !error && (
         <p className="text-center text-slate-500">Loading reports…</p>
       )}
 

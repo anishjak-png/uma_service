@@ -6,17 +6,17 @@ const tabs = [
   { id: "technicians", label: "Technicians" },
   { id: "appliances", label: "Appliances" },
   { id: "customers", label: "Customers" },
-  { id: "reports", label: "Reports" },
 ] as const;
 
-export type AdminTab = (typeof tabs)[number]["id"];
+export type AdminSettingsTab = (typeof tabs)[number]["id"];
+export type AdminTab = AdminSettingsTab | "reports";
 
 export function AdminTabs({
   active,
   onChange,
 }: {
-  active: AdminTab;
-  onChange: (tab: AdminTab) => void;
+  active: AdminSettingsTab;
+  onChange: (tab: AdminSettingsTab) => void;
 }) {
   return (
     <div className="mb-6 flex gap-1 rounded-lg border border-slate-200 bg-white p-1">

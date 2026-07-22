@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ReadyPickupList } from "@/components/ReadyPickupList";
 import { StatCard } from "@/components/StatCard";
@@ -80,32 +79,6 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
         </CardHeader>
         <CardContent>
           <ReadyPickupList jobs={data.readyForPickup} showAmounts />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-2">
-          <Link
-            href="/jobs/new"
-            className="rounded-md bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            New Job
-          </Link>
-          <Link
-            href="/jobs/search"
-            className="rounded-md border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Search
-          </Link>
-          <Link
-            href="/admin?tab=reports"
-            className="rounded-md border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Reports
-          </Link>
         </CardContent>
       </Card>
     </>

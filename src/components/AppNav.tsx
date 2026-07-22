@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SHOP_NAME } from "@/lib/constants";
 import { useAuth } from "./AuthProvider";
 
@@ -24,12 +24,24 @@ const adminLinks = [
   { href: "/jobs/pending", label: "Pending" },
   { href: "/jobs/search", label: "Search" },
   { href: "/admin", label: "Admin" },
+  { href: "/admin?tab=reports", label: "Reports" },
 ];
 
 export function AppNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { role, technicianName } = useAuth();
+
+  function isLinkActive(href: string) {
+    if (href === "/admin?tab=reports") {
+      return pathname === "/admin" && searchParams.get("tab") === "reports";
+    }
+    if (href === "/admin") {
+      return pathname === "/admin" && searchParams.get("tab") !== "reports";
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
 
   const links = role === "technician" ? technicianLinks : adminLinks;
   const showReceptionQuickActions = role === "reception" || role === null;
@@ -87,8 +99,7 @@ export function AppNav() {
         <nav className="border-b border-emerald-700 bg-emerald-900">
           <div className="mx-auto flex max-w-lg overflow-x-auto p-3">
             {links.map((link) => {
-              const active =
-                pathname === link.href || pathname.startsWith(`${link.href}/`);
+              const active = isLinkActive(link.href);
               return (
                 <Link
                   key={link.href}
