@@ -19,7 +19,7 @@ export function ReadyPickupList({
   showAmounts?: boolean;
 }) {
   if (jobs.length === 0) {
-    return <p className="text-sm text-slate-500">No products ready for pickup</p>;
+    return <p className="text-xs text-slate-500">No products ready for pickup</p>;
   }
 
   return (
@@ -27,26 +27,37 @@ export function ReadyPickupList({
       {jobs.map((job) => (
         <div
           key={job.id}
-          className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3"
+          className="rounded-md border border-slate-200 bg-white p-2.5"
         >
-          <Link
-            href={`/jobs/${job.id}`}
-            className="min-w-0 flex-1 transition-colors hover:text-emerald-800"
-          >
-            <p className="font-semibold text-slate-900">{job.jobNumber}</p>
-            <p className="text-sm text-slate-700">
+          <Link href={`/jobs/${job.id}`} className="block">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-900">
+                {job.jobNumber}
+              </p>
+              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                Ready
+              </span>
+            </div>
+          </Link>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <Link
+              href={`/jobs/${job.id}`}
+              className="min-w-0 flex-1 truncate text-sm text-slate-700"
+            >
+              {job.customer.name ?? job.customer.mobile}
+            </Link>
+            <CallCustomerButton mobile={job.customer.mobile} className="shrink-0" />
+          </div>
+          <Link href={`/jobs/${job.id}`} className="block">
+            <p className="mt-0.5 truncate text-xs text-slate-600">
               {[job.brand, job.applianceType].filter(Boolean).join(" ")}
             </p>
-            {job.customer.name && (
-              <p className="text-xs text-slate-500">{job.customer.name}</p>
-            )}
             {showAmounts && job.serviceAmount != null && (
-              <p className="mt-1 text-sm font-semibold text-emerald-700">
+              <p className="mt-0.5 text-xs font-semibold text-emerald-700">
                 {formatCurrency(job.serviceAmount)}
               </p>
             )}
           </Link>
-          <CallCustomerButton mobile={job.customer.mobile} />
         </div>
       ))}
     </div>

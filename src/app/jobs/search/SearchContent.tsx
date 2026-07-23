@@ -2,8 +2,6 @@
 
 import { AppShell } from "@/components/AppShell";
 import { JobListCard } from "@/components/JobListCard";
-import { JobStatusBadge } from "@/components/JobStatusBadge";
-import { PageHeader } from "@/components/PageHeader";
 import {
   TechnicianJobScopeToggle,
   useTechnicianJobScope,
@@ -11,11 +9,9 @@ import {
 } from "@/components/TechnicianJobScopeToggle";
 import { useAuth } from "@/components/AuthProvider";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
-import { formatCurrency } from "@/lib/currency";
 import { formatMobileDisplay, formatDateTime } from "@/lib/jobs";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type JobResult = {
   id: string;
@@ -23,6 +19,7 @@ type JobResult = {
   status: string;
   applianceType: string;
   brand?: string | null;
+  complaint?: string;
   receivedAt: string;
   readyAt?: string | null;
   deliveredAt?: string | null;
@@ -55,79 +52,11 @@ type SearchResponse =
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "Pending", label: "Pending" },
-  { value: "WaitingForCustomerApproval", label: "Waiting Approval" },
+  { value: "WaitingForCustomerApproval", label: "Waiting" },
   { value: "Ready", label: "Ready" },
   { value: "Return", label: "Return" },
   { value: "Delivered", label: "Delivered" },
 ] as const;
-
-function ServiceHistoryTable({
-  jobs,
-  showAmounts,
-}: {
-  jobs: JobResult[];
-  showAmounts: boolean;
-}) {
-  return (
-    <div className="mt-4 space-y-2">
-      {jobs.map((job) => (
-        <div
-          key={job.id}
-          className="flex items-start gap-2 rounded-md border border-emerald-100 bg-white p-3 text-sm"
-        >
-          <Link
-            href={`/jobs/${job.id}`}
-            className="min-w-0 flex-1 transition-colors hover:bg-emerald-50/50"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-semibold text-slate-900">{job.jobNumber}</p>
-              <JobStatusBadge status={job.status} />
-            </div>
-            <div className="mt-2 grid gap-1 text-slate-600 sm:grid-cols-2">
-              <p>
-                <span className="font-medium text-slate-700">Product:</span>{" "}
-                {job.applianceType}
-              </p>
-              <p>
-                <span className="font-medium text-slate-700">Brand:</span>{" "}
-                {job.brand ?? "—"}
-              </p>
-              <p>
-                <span className="font-medium text-slate-700">Status:</span>{" "}
-                {job.status}
-              </p>
-              <p>
-                <span className="font-medium text-slate-700">Received:</span>{" "}
-                {formatDateTime(job.receivedAt)}
-              </p>
-              {job.readyAt && (
-                <p>
-                  <span className="font-medium text-slate-700">Completed:</span>{" "}
-                  {formatDateTime(job.readyAt)}
-                </p>
-              )}
-              {job.deliveredAt && (
-                <p>
-                  <span className="font-medium text-slate-700">Delivered:</span>{" "}
-                  {formatDateTime(job.deliveredAt)}
-                </p>
-              )}
-              {showAmounts && job.serviceAmount != null && (
-                <p>
-                  <span className="font-medium text-slate-700">Amount:</span>{" "}
-                  <span className="font-semibold text-emerald-700">
-                    {formatCurrency(job.serviceAmount)}
-                  </span>
-                </p>
-              )}
-            </div>
-          </Link>
-          <CallCustomerButton mobile={job.customer.mobile} />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function SearchContent() {
   const router = useRouter();
@@ -143,6 +72,7 @@ export default function SearchContent() {
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const { scope, setScope, ready: scopeReady } = useTechnicianJobScope();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const search = useCallback(
     async (
@@ -232,11 +162,15 @@ export default function SearchContent() {
     runSearch(query, statusFilter, customerId);
   }
 
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    setCustomerId("");
-    updateUrl(query, statusFilter, "");
-    runSearch(query, statusFilter, "");
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (customerId) setCustomerId("");
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updateUrl(value, statusFilter, "");
+      runSearch(value, statusFilter, "");
+    }, 350);
   }
 
   function selectCustomer(pick: CustomerPick) {
@@ -246,7 +180,7 @@ export default function SearchContent() {
   }
 
   const isTechnician = role === "technician";
-  const showAmounts = role === "admin" || role === "reception";
+  const showAmounts = role === "admin";
   const apiSearchType =
     response?.mode === "jobs" ? response.searchType : null;
   const showCustomerHistory =
@@ -266,95 +200,71 @@ export default function SearchContent() {
 
   return (
     <AppShell>
-      <PageHeader
-        title="Search Jobs"
-        description={
-          isTechnician && scope === "my"
-            ? "Search your assigned jobs"
-            : "UT number, mobile number, or customer name"
-        }
-      />
-
       {isTechnician && (
-        <div className="mb-4">
+        <div className="mb-3">
           <TechnicianJobScopeToggle scope={scope} onChange={handleScopeChange} />
         </div>
       )}
 
-      <form onSubmit={handleSearch} className="mb-4 space-y-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (customerId) setCustomerId("");
-          }}
-          placeholder="UT number, mobile, or customer name"
-          className="flex h-12 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-lg placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-          autoFocus
-        />
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => handleQueryChange(e.target.value)}
+        placeholder="UT number, mobile, or name"
+        className="mb-3 flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-base placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        autoFocus
+      />
 
-        {hasActiveSearch && (
-          <div className="flex flex-wrap gap-2">
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                onClick={() => applyFilter(f.value)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                  statusFilter === f.value
-                    ? "bg-emerald-600 text-white"
-                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-        >
-          Search
-        </button>
-      </form>
+      {hasActiveSearch && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => applyFilter(f.value)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                statusFilter === f.value
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
-        <p className="text-center text-slate-500">Searching…</p>
+        <p className="text-center text-sm text-slate-500">Searching…</p>
       ) : customerPicks.length > 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="font-semibold text-slate-900">Select Customer</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Multiple customers match &ldquo;{query}&rdquo;. Select the correct one.
+        <div className="space-y-2">
+          <p className="text-xs text-slate-500">
+            Multiple matches — select customer
           </p>
-          <div className="mt-3 space-y-2">
-            {customerPicks.map((pick) => (
-              <div
-                key={pick.id}
-                className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
+          {customerPicks.map((pick) => (
+            <div
+              key={pick.id}
+              className="flex items-center gap-2 rounded-md border border-slate-200 bg-white p-2.5"
+            >
+              <button
+                type="button"
+                onClick={() => selectCustomer(pick)}
+                className="min-w-0 flex-1 text-left text-sm hover:text-emerald-800"
               >
-                <button
-                  type="button"
-                  onClick={() => selectCustomer(pick)}
-                  className="min-w-0 flex-1 text-left text-sm hover:text-emerald-800"
-                >
-                  <p className="font-medium text-slate-900">
-                    {pick.name ?? "Unnamed"}
-                  </p>
-                  <p className="text-slate-600">{formatMobileDisplay(pick.mobile)}</p>
-                  <span className="text-xs text-slate-500">
-                    {pick.jobCount} job{pick.jobCount === 1 ? "" : "s"}
-                  </span>
-                </button>
-                <CallCustomerButton mobile={pick.mobile} />
-              </div>
-            ))}
-          </div>
+                <p className="font-medium text-slate-900">
+                  {pick.name ?? "Unnamed"}
+                </p>
+                <p className="text-xs text-slate-600">
+                  {formatMobileDisplay(pick.mobile)} · {pick.jobCount} job
+                  {pick.jobCount === 1 ? "" : "s"}
+                </p>
+              </button>
+              <CallCustomerButton mobile={pick.mobile} />
+            </div>
+          ))}
         </div>
       ) : jobs.length === 0 ? (
-        <p className="text-center text-slate-500">No jobs found</p>
+        <p className="text-center text-sm text-slate-500">No jobs found</p>
       ) : showSingleJob ? (
         <JobListCard
           id={jobs[0].id}
@@ -363,41 +273,49 @@ export default function SearchContent() {
           customerName={jobs[0].customer.name}
           mobile={jobs[0].customer.mobile}
           applianceLine={[jobs[0].brand, jobs[0].applianceType].filter(Boolean).join(" ")}
+          complaint={jobs[0].complaint}
           serviceAmount={jobs[0].serviceAmount}
           showServiceAmount={showAmounts}
           meta={[
             `Received ${formatDateTime(jobs[0].receivedAt)}`,
-            jobs[0].readyAt ? `Completed ${formatDateTime(jobs[0].readyAt)}` : null,
+            jobs[0].readyAt ? `Done ${formatDateTime(jobs[0].readyAt)}` : null,
             jobs[0].deliveredAt ? `Delivered ${formatDateTime(jobs[0].deliveredAt)}` : null,
           ]
             .filter(Boolean)
             .join(" · ")}
         />
       ) : showCustomerHistory && customer ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-          <h3 className="font-semibold text-emerald-900">Customer Service History</h3>
-          <div className="mt-2 flex items-start justify-between gap-2">
-            <div className="space-y-1 text-sm text-emerald-800">
-              <p>
-                <span className="font-medium">Customer:</span>{" "}
-                {customer.name ?? "—"}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+            <div className="min-w-0 text-sm">
+              <p className="truncate font-semibold text-emerald-900">
+                {customer.name ?? formatMobileDisplay(customer.mobile)}
               </p>
-              <p>
-                <span className="font-medium">Mobile:</span>{" "}
-                {formatMobileDisplay(customer.mobile)}
-              </p>
-              <p>
-                <span className="font-medium">Total Service Visits:</span>{" "}
-                {totalVisits ?? jobs.length}
+              <p className="text-xs text-emerald-800">
+                {totalVisits ?? jobs.length} visit
+                {(totalVisits ?? jobs.length) === 1 ? "" : "s"}
                 {statusFilter !== "all" && jobs.length !== (totalVisits ?? jobs.length)
-                  ? ` · showing ${jobs.length} filtered`
+                  ? ` · ${jobs.length} shown`
                   : ""}
-                {isTechnician && scope === "my" ? " · your assigned jobs" : ""}
               </p>
             </div>
             <CallCustomerButton mobile={customer.mobile} />
           </div>
-          <ServiceHistoryTable jobs={jobs} showAmounts={showAmounts} />
+          {jobs.map((job) => (
+            <JobListCard
+              key={job.id}
+              id={job.id}
+              jobNumber={job.jobNumber}
+              status={job.status}
+              customerName={job.customer.name}
+              mobile={job.customer.mobile}
+              applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
+              complaint={job.complaint}
+              serviceAmount={job.serviceAmount}
+              showServiceAmount={showAmounts}
+              meta={`Received ${formatDateTime(job.receivedAt)}`}
+            />
+          ))}
         </div>
       ) : (
         <div className="space-y-2">
@@ -410,7 +328,9 @@ export default function SearchContent() {
               customerName={job.customer.name}
               mobile={job.customer.mobile}
               applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
+              complaint={job.complaint}
               serviceAmount={job.serviceAmount}
+              showServiceAmount={showAmounts}
               meta={`Received ${formatDateTime(job.receivedAt)}`}
             />
           ))}

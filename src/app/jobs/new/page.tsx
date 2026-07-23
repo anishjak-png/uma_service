@@ -2,9 +2,8 @@
 
 import { AppShell } from "@/components/AppShell";
 import { CreatableSelect } from "@/components/CreatableSelect";
-import { PageHeader } from "@/components/PageHeader";
 import { ReceiptActions } from "@/components/ReceiptActions";
-import { MAX_PRODUCT_PHOTOS, SHOP_NAME } from "@/lib/constants";
+import { MAX_PRODUCT_PHOTOS } from "@/lib/constants";
 import { formatMobileDisplay } from "@/lib/jobs";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
@@ -233,9 +232,7 @@ export default function NewJobPage() {
 
   return (
     <AppShell>
-      <PageHeader title="New Job Card" description={SHOP_NAME} />
-
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Customer</CardTitle>

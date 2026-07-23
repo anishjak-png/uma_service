@@ -1,122 +1,110 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { SHOP_NAME } from "@/lib/constants";
+import { usePathname, useRouter } from "next/navigation";
+import { APP_NAME } from "@/lib/constants";
 import { useAuth } from "./AuthProvider";
 
-const receptionQuickActions = [
-  { href: "/dashboard", label: "Home" },
-  { href: "/jobs/new", label: "New Job" },
-  { href: "/jobs/delivery", label: "Delivery" },
-  { href: "/jobs/search", label: "Search" },
-];
+function getNavLinks(role: "reception" | "technician" | "admin" | null) {
+  if (role === "technician") {
+    return [
+      { href: "/jobs/pending", label: "Home" },
+      { href: "/jobs/delivery", label: "Delivery" },
+      { href: "/jobs/search", label: "Search" },
+    ];
+  }
 
-const technicianLinks = [
-  { href: "/jobs/pending", label: "Dashboard" },
-  { href: "/jobs/search", label: "Search" },
-];
+  return [
+    { href: "/dashboard", label: "Home" },
+    { href: "/jobs/new", label: "New Job" },
+    { href: "/jobs/delivery", label: "Delivery" },
+    { href: "/jobs/pending", label: "Pending" },
+    { href: "/jobs/search", label: "Search" },
+  ];
+}
 
-const adminLinks = [
-  { href: "/dashboard", label: "Home" },
-  { href: "/jobs/new", label: "New Job" },
-  { href: "/jobs/delivery", label: "Delivery" },
-  { href: "/jobs/pending", label: "Pending" },
-  { href: "/jobs/search", label: "Search" },
-  { href: "/admin", label: "Admin" },
-  { href: "/admin?tab=reports", label: "Reports" },
-];
+function getUserSubtitle(
+  role: "reception" | "technician" | "admin" | null,
+  technicianName: string | null
+) {
+  if (role === "technician") {
+    return technicianName ? `${technicianName} (Technician)` : "Technician";
+  }
+  if (role === "reception") return "Reception";
+  if (role === "admin") return "Admin";
+  return null;
+}
 
 export function AppNav() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const { role, technicianName } = useAuth();
+  const { role, technicianName, refreshAuth } = useAuth();
+
+  const links = getNavLinks(role);
+  const homeHref = role === "technician" ? "/jobs/pending" : "/dashboard";
+  const userSubtitle = getUserSubtitle(role, technicianName);
 
   function isLinkActive(href: string) {
-    if (href === "/admin?tab=reports") {
-      return pathname === "/admin" && searchParams.get("tab") === "reports";
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
     }
-    if (href === "/admin") {
-      return pathname === "/admin" && searchParams.get("tab") !== "reports";
+    if (href === "/jobs/pending" && role === "technician") {
+      return pathname === "/jobs/pending";
     }
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
-  const links = role === "technician" ? technicianLinks : adminLinks;
-  const showReceptionQuickActions = role === "reception" || role === null;
-  const homeHref = role === "technician" ? "/jobs/pending" : "/dashboard";
-
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
+    await refreshAuth();
     router.push("/");
     router.refresh();
   }
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-emerald-700 bg-emerald-900 px-4 py-3 shadow-sm">
-        <div className="mx-auto flex max-w-lg items-center justify-between">
+      <header className="sticky top-0 z-40 border-b border-emerald-700 bg-emerald-900 px-3 py-2 shadow-sm">
+        <div className="mx-auto flex max-w-lg items-center justify-between gap-2">
           <Link href={homeHref} className="min-w-0">
-            <p className="text-xs text-emerald-200">Home Appliance Service</p>
-            <h1 className="text-lg font-bold text-white">{SHOP_NAME}</h1>
-            {technicianName && (
-              <p className="text-xs text-emerald-200">{technicianName}</p>
+            <h1 className="truncate text-sm font-bold uppercase tracking-wide text-white">
+              {APP_NAME}
+            </h1>
+            {userSubtitle && (
+              <p className="truncate text-xs text-emerald-200">{userSubtitle}</p>
             )}
           </Link>
           <button
             onClick={logout}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-emerald-100 transition-colors hover:bg-emerald-800 hover:text-white"
+            className="shrink-0 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-800 hover:text-white"
           >
             Logout
           </button>
         </div>
       </header>
-      {showReceptionQuickActions ? (
-        <nav className="border-b border-emerald-700 bg-emerald-900">
-          <div className="mx-auto grid max-w-lg grid-cols-4 gap-2 p-3">
-            {receptionQuickActions.map((action) => {
-              const active =
-                pathname === action.href ||
-                pathname.startsWith(`${action.href}/`);
-              return (
-                <Link
-                  key={action.href}
-                  href={action.href}
-                  className={`rounded-md px-2 py-2.5 text-center text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-white text-emerald-800"
-                      : "bg-emerald-700 text-white hover:bg-emerald-600"
-                  }`}
-                >
-                  {action.label}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-      ) : (
-        <nav className="border-b border-emerald-700 bg-emerald-900">
-          <div className="mx-auto flex max-w-lg overflow-x-auto p-3">
-            {links.map((link) => {
-              const active = isLinkActive(link.href);
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`relative mr-1 shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-emerald-700 text-white"
-                      : "text-emerald-100 hover:bg-emerald-800 hover:text-white"
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-      )}
+      <nav className="border-b border-emerald-700 bg-emerald-900">
+        <div
+          className={`mx-auto grid max-w-lg gap-1 p-2 ${
+            links.length === 3 ? "grid-cols-3" : "grid-cols-5"
+          }`}
+        >
+          {links.map((link) => {
+            const active = isLinkActive(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`rounded-md px-1 py-2 text-center text-xs font-medium transition-colors ${
+                  active
+                    ? "bg-white text-emerald-800"
+                    : "bg-emerald-700 text-white hover:bg-emerald-600"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </>
   );
 }

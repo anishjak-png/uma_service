@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { PageHeader } from "@/components/PageHeader";
 import { ReadyPickupList } from "@/components/ReadyPickupList";
 import { StatCard } from "@/components/StatCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type ReceptionDashboardProps = {
   data: {
@@ -24,65 +22,54 @@ type ReceptionDashboardProps = {
 
 export function ReceptionDashboard({ data, showAmounts }: ReceptionDashboardProps) {
   return (
-    <>
-      <PageHeader title="Service Counter" description="Today's overview" />
+    <div className="space-y-3">
+      <Link
+        href="/jobs/new"
+        className="block rounded-md bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
+      >
+        New Job
+      </Link>
 
-      <div className="mb-6 grid grid-cols-2 gap-3">
-        <StatCard label="Today's Jobs" value={data.todayJobs} />
-        <StatCard
-          label="Pending Jobs"
-          value={data.pendingJobs}
-          href="/jobs/search?status=Pending"
-          valueClassName="text-blue-700"
-        />
-        <StatCard
-          label="Ready for Pickup"
-          value={data.readyJobs}
-          href="/jobs/search?status=Ready"
-          valueClassName="text-emerald-700"
-        />
-        <StatCard
-          label="Waiting for Approval"
-          value={data.waitingApprovalJobs}
-          href="/jobs/search?status=WaitingForCustomerApproval"
-          valueClassName="text-amber-700"
-        />
-      </div>
+      <Link
+        href="/jobs/search"
+        className="block rounded-md border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        Search
+      </Link>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="text-base">Ready for Pickup Products</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ReadyPickupList jobs={data.readyForPickup} showAmounts={showAmounts} />
-        </CardContent>
-      </Card>
+      <section>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Ready for Delivery
+        </p>
+        <ReadyPickupList jobs={data.readyForPickup} showAmounts={showAmounts} />
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-2">
-          <Link
-            href="/jobs/new"
-            className="rounded-md bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            New Job
-          </Link>
-          <Link
-            href="/jobs/search"
-            className="rounded-md border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Search
-          </Link>
-          <Link
-            href="/jobs/delivery"
-            className="rounded-md border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Delivery
-          </Link>
-        </CardContent>
-      </Card>
-    </>
+      <section>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Today&apos;s Jobs
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <StatCard label="Today" value={data.todayJobs} />
+          <StatCard
+            label="Pending"
+            value={data.pendingJobs}
+            href="/jobs/search?status=Pending"
+            valueClassName="text-blue-700"
+          />
+          <StatCard
+            label="Ready"
+            value={data.readyJobs}
+            href="/jobs/search?status=Ready"
+            valueClassName="text-emerald-700"
+          />
+          <StatCard
+            label="Waiting Approval"
+            value={data.waitingApprovalJobs}
+            href="/jobs/search?status=WaitingForCustomerApproval"
+            valueClassName="text-amber-700"
+          />
+        </div>
+      </section>
+    </div>
   );
 }

@@ -2,12 +2,11 @@
 
 import { AppShell } from "@/components/AppShell";
 import { JobListCard } from "@/components/JobListCard";
-import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/StatCard";
 import {
   TechnicianJobScopeToggle,
   useTechnicianJobScope,
 } from "@/components/TechnicianJobScopeToggle";
+import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/components/AuthProvider";
 import { ACTIVE_STATUSES } from "@/lib/constants";
 import Link from "next/link";
@@ -75,73 +74,17 @@ export default function PendingJobsPage() {
 
   return (
     <AppShell>
-      <PageHeader
-        title={isTechnician ? "Technician Dashboard" : "Active Jobs"}
-        description={
-          isTechnician
-            ? scope === "my"
-              ? "Jobs assigned to you"
-              : "All active jobs in the service centre"
-            : "All pending and in-progress service jobs"
-        }
-      />
-
       {isTechnician && (
-        <>
-          <div className="mb-4">
-            <TechnicianJobScopeToggle scope={scope} onChange={setScope} />
-          </div>
-
-          {stats && (
-            <div className="mb-6 grid grid-cols-2 gap-3">
-              <StatCard
-                label="My Pending"
-                value={stats.pendingJobs}
-                valueClassName="text-blue-700"
-              />
-              <StatCard
-                label="My Ready"
-                value={stats.readyJobs}
-                valueClassName="text-emerald-700"
-              />
-              <StatCard
-                label="Waiting Approval"
-                value={stats.waitingApprovalJobs}
-                valueClassName="text-amber-700"
-              />
-              <StatCard
-                label="My Return"
-                value={stats.returnJobs}
-              />
-            </div>
-          )}
-
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            <Link
-              href="/jobs/search"
-              className="rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Search
-            </Link>
-            <Link
-              href={jobs[0] ? `/jobs/${jobs[0].id}` : "/jobs/search"}
-              className="rounded-md bg-emerald-600 py-2.5 text-center text-sm font-semibold text-white hover:bg-emerald-700"
-            >
-              Update Status
-            </Link>
-          </div>
-
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            {scope === "my" ? "My Assigned Jobs" : "All Active Jobs"}
-          </h3>
-        </>
+        <div className="mb-3">
+          <TechnicianJobScopeToggle scope={scope} onChange={setScope} />
+        </div>
       )}
 
       {loading ? (
-        <p className="text-center text-slate-500">Loading…</p>
+        <p className="text-center text-sm text-slate-500">Loading…</p>
       ) : jobs.length === 0 ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-8 text-center">
-          <p className="font-semibold text-emerald-800">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-center">
+          <p className="text-sm font-semibold text-emerald-800">
             {isTechnician && scope === "my"
               ? "No jobs assigned to you"
               : "No active jobs"}
@@ -161,13 +104,57 @@ export default function PendingJobsPage() {
               complaint={job.complaint}
               showServiceAmount={!isTechnician}
               meta={
-                job.assignedTechnician
-                  ? `Assigned: ${job.assignedTechnician.name}`
+                !isTechnician && job.assignedTechnician
+                  ? job.assignedTechnician.name
                   : undefined
               }
             />
           ))}
         </div>
+      )}
+
+      {isTechnician && stats && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <StatCard
+            label="Pending"
+            value={stats.pendingJobs}
+            valueClassName="text-blue-700"
+          />
+          <StatCard
+            label="Ready"
+            value={stats.readyJobs}
+            valueClassName="text-emerald-700"
+          />
+          <StatCard
+            label="Waiting"
+            value={stats.waitingApprovalJobs}
+            valueClassName="text-amber-700"
+          />
+          <StatCard label="Return" value={stats.returnJobs} />
+        </div>
+      )}
+
+      {isTechnician && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Link
+            href="/jobs/search"
+            className="rounded-md border border-slate-300 bg-white py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Search
+          </Link>
+          <Link
+            href={jobs[0] ? `/jobs/${jobs[0].id}` : "/jobs/search"}
+            className="rounded-md bg-emerald-600 py-2 text-center text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            Update Status
+          </Link>
+        </div>
+      )}
+
+      {!isTechnician && !loading && jobs.length > 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          {jobs.length} active job{jobs.length === 1 ? "" : "s"}
+        </p>
       )}
     </AppShell>
   );

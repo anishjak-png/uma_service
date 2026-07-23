@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -18,12 +19,17 @@ type AuthState = {
   loaded: boolean;
 };
 
-const AuthContext = createContext<AuthState>({
+type AuthContextValue = AuthState & {
+  refreshAuth: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthContextValue>({
   isLoggedIn: false,
   role: null,
   technicianId: null,
   technicianName: null,
   loaded: false,
+  refreshAuth: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -35,24 +41,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loaded: false,
   });
 
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        setAuth({
-          isLoggedIn: Boolean(data.isLoggedIn),
-          role: data.role ?? null,
-          technicianId: data.technicianId ?? null,
-          technicianName: data.technicianName ?? null,
-          loaded: true,
-        });
-      })
-      .catch(() => {
-        setAuth((prev) => ({ ...prev, loaded: true }));
+  const refreshAuth = useCallback(async () => {
+    try {
+      const r = await fetch("/api/auth/me");
+      const data = await r.json();
+      setAuth({
+        isLoggedIn: Boolean(data.isLoggedIn),
+        role: data.role ?? null,
+        technicianId: data.technicianId ?? null,
+        technicianName: data.technicianName ?? null,
+        loaded: true,
       });
+    } catch {
+      setAuth((prev) => ({ ...prev, loaded: true }));
+    }
   }, []);
 
-  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
+  useEffect(() => {
+    refreshAuth();
+  }, [refreshAuth]);
+
+  return (
+    <AuthContext.Provider value={{ ...auth, refreshAuth }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

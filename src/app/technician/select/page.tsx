@@ -15,7 +15,8 @@ type Technician = { id: string; name: string };
 
 export default function TechnicianSelectPage() {
   const router = useRouter();
-  const { role, isLoggedIn, technicianId, loaded: authLoaded } = useAuth();
+  const { role, isLoggedIn, technicianId, loaded: authLoaded, refreshAuth } =
+    useAuth();
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,25 +34,32 @@ export default function TechnicianSelectPage() {
     }
 
     fetch("/api/technicians")
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Failed to load technicians");
+        return r.json();
+      })
       .then((data) => {
-        setTechnicians(data);
+        setTechnicians(Array.isArray(data) ? data : []);
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
   }, [authLoaded, isLoggedIn, role, technicianId, router]);
 
-  async function selectTechnician(technicianId: string) {
-    await fetch("/api/auth/technician-select", {
+  async function selectTechnician(id: string) {
+    const res = await fetch("/api/auth/technician-select", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ technicianId }),
+      body: JSON.stringify({ technicianId: id }),
     });
+    if (!res.ok) return;
+    await refreshAuth();
     router.push("/jobs/pending");
     router.refresh();
   }
 
   async function goBack() {
     await fetch("/api/auth/logout", { method: "POST" });
+    await refreshAuth();
     router.push("/");
     router.refresh();
   }
@@ -82,15 +90,21 @@ export default function TechnicianSelectPage() {
             <p className="text-sm text-slate-500">Who is working today?</p>
           </CardHeader>
           <CardContent className="space-y-2">
-            {technicians.map((tech) => (
-              <button
-                key={tech.id}
-                onClick={() => selectTechnician(tech.id)}
-                className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-              >
-                {tech.name}
-              </button>
-            ))}
+            {technicians.length === 0 ? (
+              <p className="text-center text-sm text-slate-500">
+                No active technicians. Ask admin to add technicians first.
+              </p>
+            ) : (
+              technicians.map((tech) => (
+                <button
+                  key={tech.id}
+                  onClick={() => selectTechnician(tech.id)}
+                  className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                >
+                  {tech.name}
+                </button>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { SHOP_NAME } from "@/lib/constants";
+import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import {
@@ -13,6 +14,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refreshAuth } = useAuth();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,6 +41,7 @@ export default function LoginPage() {
     }
 
     const data = await res.json();
+    await refreshAuth();
     setLoading(false);
     router.push(data.role === "technician" ? "/technician/select" : "/dashboard");
     router.refresh();

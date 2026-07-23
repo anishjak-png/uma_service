@@ -2,8 +2,7 @@
 
 import { AppShell } from "@/components/AppShell";
 import { JobListCard } from "@/components/JobListCard";
-import { PageHeader } from "@/components/PageHeader";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type DeliveryJob = {
@@ -27,6 +26,7 @@ export default function DeliveryContent() {
   const [loading, setLoading] = useState(true);
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadJobs = useCallback(async (q: string) => {
     setLoading(true);
@@ -38,7 +38,6 @@ export default function DeliveryContent() {
     if (!res.ok) {
       setResults([]);
       setLoading(false);
-      if (q.trim()) alert("Search failed");
       return;
     }
 
@@ -54,6 +53,12 @@ export default function DeliveryContent() {
   useEffect(() => {
     loadJobs(initialQ);
   }, [initialQ, loadJobs]);
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => loadJobs(value), 350);
+  }
 
   function handleSearch(e: FormEvent) {
     e.preventDefault();
@@ -85,88 +90,61 @@ export default function DeliveryContent() {
 
   return (
     <AppShell>
-      <div className="space-y-4">
-        <PageHeader
-          title="Delivery"
-          description="Ready and return-to-customer jobs only"
+      <form onSubmit={handleSearch} className="mb-3">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => handleQueryChange(e.target.value)}
+          placeholder="Search UT or mobile"
+          className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-base placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          autoFocus
         />
+      </form>
 
-        <form onSubmit={handleSearch} className="space-y-3">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search UT number or mobile number"
-            className="flex h-12 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-lg placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-            autoFocus
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="submit"
-              disabled={loading || !query.trim()}
-              className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
-            >
-              {loading && hasSearch ? "Searching…" : "Search"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                loadJobs("");
-              }}
-              disabled={loading}
-              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Show All
-            </button>
-          </div>
-        </form>
+      {successMsg && (
+        <div className="mb-3 rounded-md bg-green-50 px-3 py-2 text-center text-xs font-medium text-green-800">
+          {successMsg}
+        </div>
+      )}
 
-        {successMsg && (
-          <div className="rounded-lg bg-green-50 px-4 py-3 text-center text-sm font-medium text-green-800">
-            {successMsg}
-          </div>
-        )}
-
-        {loading ? (
-          <p className="text-center text-slate-500">Loading…</p>
-        ) : results.length === 0 ? (
-          <p className="text-center text-slate-500">
-            {hasSearch
-              ? "No ready or return jobs found for this search"
-              : "No jobs ready for delivery"}
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {!hasSearch && (
-              <p className="text-sm font-medium text-slate-600">
-                {results.length} job{results.length === 1 ? "" : "s"} ready for pickup
-              </p>
-            )}
-            {results.map((job) => (
-              <JobListCard
-                key={job.id}
-                id={job.id}
-                jobNumber={job.jobNumber}
-                status={job.status}
-                customerName={job.customer.name}
-                mobile={job.customer.mobile}
-                applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
-                serviceAmount={job.serviceAmount}
-                footer={
-                  <button
-                    onClick={() => markDelivered(job)}
-                    disabled={deliveringId === job.id}
-                    className="w-full rounded-md bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    {deliveringId === job.id ? "Updating…" : "Delivered"}
-                  </button>
-                }
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {loading ? (
+        <p className="text-center text-sm text-slate-500">Loading…</p>
+      ) : results.length === 0 ? (
+        <p className="text-center text-sm text-slate-500">
+          {hasSearch
+            ? "No ready or return jobs for this search"
+            : "No jobs ready for delivery"}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {!hasSearch && (
+            <p className="text-xs text-slate-500">
+              {results.length} ready for pickup
+            </p>
+          )}
+          {results.map((job) => (
+            <JobListCard
+              key={job.id}
+              id={job.id}
+              jobNumber={job.jobNumber}
+              status={job.status}
+              customerName={job.customer.name}
+              mobile={job.customer.mobile}
+              applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
+              serviceAmount={job.serviceAmount}
+              footer={
+                <button
+                  onClick={() => markDelivered(job)}
+                  disabled={deliveringId === job.id}
+                  className="w-full rounded-md bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {deliveringId === job.id ? "Updating…" : "Delivered"}
+                </button>
+              }
+            />
+          ))}
+        </div>
+      )}
     </AppShell>
   );
 }

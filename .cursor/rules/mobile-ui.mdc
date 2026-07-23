@@ -1,0 +1,46 @@
+---
+description: Mobile-first UI design system for UMA Service — compact, dense, role-aware layouts
+globs: src/**/*.{tsx,jsx,css}
+alwaysApply: true
+---
+
+# Mobile UI Design System
+
+Full reference: `docs/UI_GUIDELINES.md`
+
+## Before changing any UI
+
+Ask: **Can the user do their primary task without scrolling on 390×844?**
+
+**Exception:** Detail pages (Job Details, etc.) — readability first, not ultra-compact.
+
+## Non-negotiables
+
+- **Header**: `UMA SERVICE` + role line (`Jeeva (Technician)`, `Reception`, `Admin`)
+- **No redundant headings** on operational pages
+- **Job list cards** use `JobListCard` — compact; detail pages use section layout
+- **Nav ≤ 5 items**: Home, New Job, Delivery, Pending, Search
+- **Call button** wherever customer name/mobile appears
+- **Print + Reprint Receipt** on every Job Details page
+
+## Page types
+
+| Type | Style |
+|------|-------|
+| Operational | Compact, action-first, dense |
+| Analytical | Readability first, moderate spacing |
+| Detail | Section-based, scannable, spacing OK |
+
+## Role gating
+
+- **Reception**: no collection/revenue reports or totals
+- **Admin only**: collection stats, technician revenue, brand reports
+- **Technician**: My Jobs first; no service amounts on list cards
+
+## Reception dashboard order
+
+New Job → Search → Ready for Delivery → Today's Stats
+
+## Do not
+
+Redesign functionality — only layout, density, hierarchy, spacing, and mobile usability.

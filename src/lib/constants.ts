@@ -1,3 +1,4 @@
+export const APP_NAME = "UMA SERVICE";
 export const SHOP_NAME = process.env.NEXT_PUBLIC_SHOP_NAME ?? "Uma Traders";
 export const SHOP_PHONE = process.env.NEXT_PUBLIC_SHOP_PHONE ?? "";
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

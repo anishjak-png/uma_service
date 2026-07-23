@@ -3,7 +3,6 @@
 import { AdminTabs, AdminTab } from "@/components/AdminTabs";
 import { AppShell } from "@/components/AppShell";
 import { CreatableSelect } from "@/components/CreatableSelect";
-import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/components/AuthProvider";
@@ -91,14 +90,6 @@ export default function AdminContent() {
 
   return (
     <AppShell>
-      <PageHeader
-        title={tab === "reports" ? "Reports" : "Admin"}
-        description={
-          tab === "reports"
-            ? "Service and billing analytics"
-            : "Technicians, appliances, and customers"
-        }
-      />
       {tab !== "reports" && (
         <AdminTabs
           active={tab as "technicians" | "appliances" | "customers"}

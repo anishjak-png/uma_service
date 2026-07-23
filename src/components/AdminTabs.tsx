@@ -19,14 +19,14 @@ export function AdminTabs({
   onChange: (tab: AdminSettingsTab) => void;
 }) {
   return (
-    <div className="mb-6 flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+    <div className="mb-3 flex gap-1 rounded-md border border-slate-200 bg-white p-0.5">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
           className={cn(
-            "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            "flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors",
             active === tab.id
               ? "bg-emerald-600 text-white"
               : "text-slate-600 hover:bg-slate-50"

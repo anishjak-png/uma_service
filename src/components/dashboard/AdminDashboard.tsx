@@ -1,7 +1,6 @@
-import { PageHeader } from "@/components/PageHeader";
+import Link from "next/link";
 import { ReadyPickupList } from "@/components/ReadyPickupList";
 import { StatCard } from "@/components/StatCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/currency";
 
 type AdminDashboardProps = {
@@ -27,34 +26,8 @@ type AdminDashboardProps = {
 
 export function AdminDashboard({ data }: AdminDashboardProps) {
   return (
-    <>
-      <PageHeader title="Admin Dashboard" description="Service overview & finances" />
-
-      <div className="mb-6 grid grid-cols-2 gap-3">
-        <StatCard label="Today's Jobs" value={data.todayJobs} />
-        <StatCard
-          label="Pending Jobs"
-          value={data.pendingJobs}
-          href="/jobs/search?status=Pending"
-          valueClassName="text-blue-700"
-        />
-        <StatCard
-          label="Ready Jobs"
-          value={data.readyJobs}
-          href="/jobs/search?status=Ready"
-          valueClassName="text-emerald-700"
-        />
-        <StatCard
-          label="Delivered Jobs"
-          value={data.deliveredJobs}
-          href="/jobs/search?status=Delivered"
-        />
-        <StatCard
-          label="Waiting for Approval"
-          value={data.waitingApprovalJobs}
-          href="/jobs/search?status=WaitingForCustomerApproval"
-          valueClassName="text-amber-700"
-        />
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
         <StatCard
           label="Today's Collection"
           value={formatCurrency(data.todayCollection)}
@@ -68,19 +41,56 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
         <StatCard
           label="Pending Collection"
           value={formatCurrency(data.pendingCollection)}
-          subtext="Ready, not yet delivered"
+          subtext="Ready, not delivered"
           valueClassName="text-amber-800"
         />
+        <Link
+          href="/admin?tab=reports"
+          className="flex items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-center text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+        >
+          Reports &amp; Analytics
+        </Link>
       </div>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="text-base">Ready for Pickup</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ReadyPickupList jobs={data.readyForPickup} showAmounts />
-        </CardContent>
-      </Card>
-    </>
+      <section>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Job Stats
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <StatCard label="Today" value={data.todayJobs} />
+          <StatCard
+            label="Pending"
+            value={data.pendingJobs}
+            href="/jobs/search?status=Pending"
+            valueClassName="text-blue-700"
+          />
+          <StatCard
+            label="Ready"
+            value={data.readyJobs}
+            href="/jobs/search?status=Ready"
+            valueClassName="text-emerald-700"
+          />
+          <StatCard
+            label="Delivered"
+            value={data.deliveredJobs}
+            href="/jobs/search?status=Delivered"
+          />
+        </div>
+      </section>
+
+      <section>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Ready for Delivery
+        </p>
+        <ReadyPickupList jobs={data.readyForPickup} showAmounts />
+      </section>
+
+      <Link
+        href="/admin"
+        className="block rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        Admin Settings
+      </Link>
+    </div>
   );
 }

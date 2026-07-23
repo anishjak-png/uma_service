@@ -26,9 +26,11 @@ type PrintStatus = {
 export function ReceiptActions({
   job,
   autoPoll = false,
+  variant = "default",
 }: {
   job: JobForReceipt;
   autoPoll?: boolean;
+  variant?: "default" | "jobDetail";
 }) {
   const [status, setStatus] = useState<string | null>(null);
   const [printStatus, setPrintStatus] = useState<PrintStatus | null>(null);
@@ -136,34 +138,56 @@ export function ReceiptActions({
       )}
 
       <div className="flex flex-wrap gap-2">
-        <button
-          onClick={handleReprint}
-          disabled={reprinting}
-          className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
-        >
-          {reprinting
-            ? "Sending…"
-            : autoPoll && printState === "Failed"
-              ? "Retry Print"
-              : autoPoll && printState === "Done"
-                ? "Reprint"
-                : "Print to Counter"}
-        </button>
-        <button
-          onClick={handleBrowserPrint}
-          className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-        >
-          Print / PDF
-        </button>
+        {variant === "jobDetail" ? (
+          <>
+            <button
+              onClick={handleBrowserPrint}
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+            >
+              Print Receipt
+            </button>
+            <button
+              onClick={handleReprint}
+              disabled={reprinting}
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {reprinting ? "Sending…" : "Reprint Receipt"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={handleReprint}
+              disabled={reprinting}
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {reprinting
+                ? "Sending…"
+                : autoPoll && printState === "Failed"
+                  ? "Retry Print"
+                  : autoPoll && printState === "Done"
+                    ? "Reprint"
+                    : "Print to Counter"}
+            </button>
+            <button
+              onClick={handleBrowserPrint}
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Print / PDF
+            </button>
+          </>
+        )}
       </div>
 
-      <button
-        onClick={handleBluetoothPrint}
-        disabled={printing}
-        className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
-      >
-        {printing ? "Printing…" : "Bluetooth fallback (phone)"}
-      </button>
+      {variant !== "jobDetail" && (
+        <button
+          onClick={handleBluetoothPrint}
+          disabled={printing}
+          className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+        >
+          {printing ? "Printing…" : "Bluetooth fallback (phone)"}
+        </button>
+      )}
 
       {status && <p className="text-sm text-slate-600">{status}</p>}
     </div>

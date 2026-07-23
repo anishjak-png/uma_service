@@ -12,11 +12,11 @@ import {
   type StaffRole,
 } from "@/lib/constants";
 import { formatCurrency } from "@/lib/currency";
-import { daysSince, formatMobileDisplay, formatStatusChangedBy, formatDateTime, parseProductPhotos } from "@/lib/jobs";
+import { daysSince, formatMobileDisplay, formatStatusChangedBy, formatDateTime, parseProductPhotos, normalizeMobile } from "@/lib/jobs";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 type JobDetail = {
   id: string;
@@ -35,7 +35,7 @@ type JobDetail = {
   deliveredAt?: string | null;
   assignedTechnician?: { id: string; name: string } | null;
   completedByTechnician?: { id: string; name: string } | null;
-  customer: { mobile: string; name?: string | null };
+  customer: { id: string; mobile: string; name?: string | null };
   statusHistory: Array<{
     id: string;
     status: string;
@@ -66,6 +66,38 @@ function mergeJobPatch(prev: JobDetail, patch: JobPatchResponse): JobDetail {
       ? [statusHistoryEntry, ...prev.statusHistory]
       : prev.statusHistory,
   };
+}
+
+function DetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+        {title}
+      </h3>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-slate-600">{label}</p>
+      <div className="mt-0.5 text-base text-slate-900">{children}</div>
+    </div>
+  );
 }
 
 export default function JobDetailPage() {
@@ -213,110 +245,147 @@ export default function JobDetailPage() {
   const photos = parseProductPhotos(job.productPhotos);
   const isStaff = role === "reception" || role === "admin";
   const isAdmin = role === "admin";
-  const isTechnician = role === "technician";
   const showFinancials = isStaff || isAdmin;
   const isLocked = isDeliveredTerminal(job.status) && !isAdmin;
   const canAdminEditAmount = isAdmin && job.readyAt != null && !isLocked;
 
+  const callDigits = normalizeMobile(job.customer.mobile);
+
   return (
     <AppShell>
-      <div className="space-y-4">
+      <div className="space-y-5">
         <Link href={backHref} className="text-sm font-medium text-emerald-600 hover:underline">
           ← Back
         </Link>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">{job.jobNumber}</h2>
-              <p className="text-slate-600">
-                {job.customer.name ?? formatMobileDisplay(job.customer.mobile)}
-              </p>
-              <div className="mt-1 flex items-center gap-2">
-                <p className="text-sm text-slate-500">
-                  {formatMobileDisplay(job.customer.mobile)}
-                </p>
-                <CallCustomerButton mobile={job.customer.mobile} className="h-8 w-8" />
-              </div>
-            </div>
-            <JobStatusBadge status={job.status} />
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">{job.jobNumber}</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Received {formatDateTime(job.receivedAt)}
+            <span className="ml-1">
+              ({daysSince(new Date(job.receivedAt))} days ago)
+            </span>
+          </p>
+        </div>
 
-          <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-            <p>
-              <span className="font-medium text-slate-700">Current status:</span>{" "}
-              <JobStatusBadge status={job.status} />
+        <DetailSection title="Customer Details">
+          <DetailRow label="Customer Name">
+            {job.customer.name ?? "—"}
+          </DetailRow>
+          <DetailRow label="Mobile Number">
+            <div className="flex items-center gap-2">
+              <span>{formatMobileDisplay(job.customer.mobile)}</span>
+              <CallCustomerButton mobile={job.customer.mobile} />
+            </div>
+          </DetailRow>
+          <DetailRow label="Customer ID">
+            <span className="break-all font-mono text-sm">{job.customer.id}</span>
+          </DetailRow>
+        </DetailSection>
+
+        <DetailSection title="Product Details">
+          <DetailRow label="Product Type">{job.applianceType}</DetailRow>
+          <DetailRow label="Brand">{job.brand}</DetailRow>
+          <DetailRow label="Model">{job.model ?? "—"}</DetailRow>
+        </DetailSection>
+
+        <DetailSection title="Complaint">
+          <p className="text-base leading-relaxed text-slate-800">{job.complaint}</p>
+        </DetailSection>
+
+        {job.physicalCondition && (
+          <DetailSection title="Physical Condition">
+            <p className="text-base leading-relaxed text-slate-800">
+              {job.physicalCondition}
             </p>
-            {showFinancials && job.serviceAmount != null && (
-              <p>
-                <span className="font-medium text-slate-700">Service amount:</span>{" "}
-                <span className="font-semibold text-emerald-700">
-                  {formatCurrency(job.serviceAmount)}
-                </span>
+          </DetailSection>
+        )}
+
+        <DetailSection title="Current Status">
+          <JobStatusBadge status={job.status} />
+          {job.readyAt && (
+            <DetailRow label="Completed">
+              {formatDateTime(job.readyAt)}
+            </DetailRow>
+          )}
+          {job.deliveredAt && (
+            <DetailRow label="Delivered">
+              {formatDateTime(job.deliveredAt)}
+            </DetailRow>
+          )}
+        </DetailSection>
+
+        <DetailSection title="Assigned Technician">
+          <p className="text-base text-slate-900">
+            {job.assignedTechnician?.name ?? "—"}
+          </p>
+        </DetailSection>
+
+        <DetailSection title="Completed By Technician">
+          <p className="text-base text-slate-900">
+            {job.completedByTechnician?.name ?? "—"}
+          </p>
+        </DetailSection>
+
+        {showFinancials && (
+          <DetailSection title="Service Amount">
+            {job.serviceAmount != null ? (
+              <p className="text-xl font-semibold text-emerald-700">
+                {formatCurrency(job.serviceAmount)}
                 {job.readyAt && !isAdmin && (
-                  <span className="ml-2 text-xs text-slate-400">(locked)</span>
+                  <span className="ml-2 text-sm font-normal text-slate-400">
+                    (locked)
+                  </span>
                 )}
               </p>
+            ) : (
+              <p className="text-base text-slate-500">Not set</p>
             )}
-            <p>
-              <span className="font-medium text-slate-700">Received:</span>{" "}
-              {formatDateTime(job.receivedAt)}
-              <span className="ml-1 text-slate-500">
-                ({daysSince(new Date(job.receivedAt))} days ago)
-              </span>
-            </p>
-            {job.readyAt && (
-              <p>
-                <span className="font-medium text-slate-700">Completed:</span>{" "}
-                {formatDateTime(job.readyAt)}
-              </p>
-            )}
-            {job.deliveredAt && (
-              <p>
-                <span className="font-medium text-slate-700">Delivered:</span>{" "}
-                {formatDateTime(job.deliveredAt)}
-              </p>
-            )}
-            <p>
-              <span className="font-medium text-slate-700">Assigned technician:</span>{" "}
-              {job.assignedTechnician?.name ?? "—"}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Completed by:</span>{" "}
-              {job.completedByTechnician?.name ?? "—"}
-            </p>
-          </div>
+          </DetailSection>
+        )}
 
-          <div className="mt-4 space-y-2 text-sm">
-            <p>
-              <span className="font-medium text-slate-700">Product:</span>{" "}
-              {[job.brand, job.applianceType, job.model].filter(Boolean).join(" ")}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Complaint:</span> {job.complaint}
-            </p>
-            {job.physicalCondition && (
-              <p>
-                <span className="font-medium text-slate-700">Condition:</span>{" "}
-                {job.physicalCondition}
+        {(job.remarks || !isLocked) && (
+          <DetailSection title="Remarks">
+            {!isLocked ? (
+              <div className="space-y-3">
+                <textarea
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  placeholder="e.g. Motor replaced, waiting for spare, customer informed"
+                  rows={3}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                />
+                <button
+                  onClick={handleSaveRemarks}
+                  disabled={saving}
+                  className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  Save Remarks
+                </button>
+              </div>
+            ) : (
+              <p className="text-base leading-relaxed text-slate-700">
+                {job.remarks}
               </p>
             )}
-          </div>
+          </DetailSection>
+        )}
 
-          {photos.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
+        {photos.length > 0 && (
+          <DetailSection title="Product Photos">
+            <div className="flex flex-wrap gap-3">
               {photos.map((photo, i) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   key={i}
                   src={photo}
                   alt={`Product ${i + 1}`}
-                  className="h-24 w-24 rounded-md border border-slate-200 object-cover"
+                  className="h-28 w-28 rounded-md border border-slate-200 object-cover"
                 />
               ))}
             </div>
-          )}
-        </div>
+          </DetailSection>
+        )}
 
         {isLocked && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
@@ -328,7 +397,7 @@ export default function JobDetailPage() {
           <button
             type="button"
             onClick={() => setShowAmountEdit(true)}
-            className="w-full rounded-md border border-slate-300 bg-white py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="w-full rounded-md border border-slate-300 bg-white py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Edit Service Amount (Admin)
           </button>
@@ -338,14 +407,14 @@ export default function JobDetailPage() {
           <button
             type="button"
             onClick={() => setShowCompletedByEdit(true)}
-            className="w-full rounded-md border border-slate-300 bg-white py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="w-full rounded-md border border-slate-300 bg-white py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Edit Completed By (Admin)
           </button>
         )}
 
         {showCompletedByEdit && isAdmin && (
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm space-y-3">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm space-y-3">
             <h3 className="font-semibold text-slate-900">Edit Completed By</h3>
             <select
               value={editCompletedById}
@@ -363,13 +432,13 @@ export default function JobDetailPage() {
               <button
                 onClick={handleSaveCompletedBy}
                 disabled={saving}
-                className="flex-1 rounded-md bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="flex-1 rounded-md bg-emerald-600 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 Save
               </button>
               <button
                 onClick={() => setShowCompletedByEdit(false)}
-                className="flex-1 rounded-md border border-slate-300 bg-white py-2 text-sm"
+                className="flex-1 rounded-md border border-slate-300 bg-white py-2.5 text-sm"
               >
                 Cancel
               </button>
@@ -378,7 +447,7 @@ export default function JobDetailPage() {
         )}
 
         {showAmountEdit && isAdmin && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm space-y-3">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm space-y-3">
             <h3 className="font-semibold text-amber-900">Edit Service Amount</h3>
             <input
               type="number"
@@ -392,13 +461,13 @@ export default function JobDetailPage() {
               <button
                 onClick={handleSaveAmount}
                 disabled={saving}
-                className="flex-1 rounded-md bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="flex-1 rounded-md bg-emerald-600 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 Save Amount
               </button>
               <button
                 onClick={() => setShowAmountEdit(false)}
-                className="flex-1 rounded-md border border-slate-300 bg-white py-2 text-sm"
+                className="flex-1 rounded-md border border-slate-300 bg-white py-2.5 text-sm"
               >
                 Cancel
               </button>
@@ -407,7 +476,7 @@ export default function JobDetailPage() {
         )}
 
         {showReadyForm && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6 shadow-sm space-y-3">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm space-y-3">
             <h3 className="font-semibold text-emerald-900">Mark as Ready</h3>
             <p className="text-sm text-emerald-800">Service amount is required.</p>
             <input
@@ -443,13 +512,13 @@ export default function JobDetailPage() {
               <button
                 onClick={confirmReady}
                 disabled={saving}
-                className="flex-1 rounded-md bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="flex-1 rounded-md bg-emerald-600 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 Confirm Ready
               </button>
               <button
                 onClick={() => setShowReadyForm(false)}
-                className="flex-1 rounded-md border border-slate-300 bg-white py-2 text-sm"
+                className="flex-1 rounded-md border border-slate-300 bg-white py-2.5 text-sm"
               >
                 Cancel
               </button>
@@ -457,75 +526,51 @@ export default function JobDetailPage() {
           </div>
         )}
 
-        {!showReadyForm && selectableStatuses.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm space-y-3">
-            <h3 className="font-semibold text-slate-900">
-              {job.status === "Delivered" ? "Reopen Job (Admin)" : "Update Status"}
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {selectableStatuses.map((status) => (
-                <button
-                  key={status}
-                  onClick={() => handleStatusChange(status)}
-                  disabled={saving}
-                  className="rounded-md bg-emerald-600 py-3 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {STATUS_LABELS[status]}
-                </button>
-              ))}
+        <DetailSection title="Actions">
+          {!showReadyForm && selectableStatuses.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-600">Change Status</p>
+              <div className="grid grid-cols-2 gap-2">
+                {selectableStatuses.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => handleStatusChange(status)}
+                    disabled={saving}
+                    className="rounded-md bg-emerald-600 py-3 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {STATUS_LABELS[status]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {!isLocked && (
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm space-y-3">
-            <h3 className="font-semibold text-slate-900">Remarks</h3>
-            <textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="e.g. Motor replaced, waiting for spare, customer informed"
-              rows={3}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-            />
-            <button
-              onClick={handleSaveRemarks}
-              disabled={saving}
-              className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
+          {callDigits.length === 10 && (
+            <a
+              href={`tel:${callDigits}`}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
             >
-              Save Remarks
-            </button>
-          </div>
-        )}
+              Call Customer
+            </a>
+          )}
 
-        {job.remarks && isLocked && (
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-2 font-semibold text-slate-900">Remarks</h3>
-            <p className="text-sm text-slate-700">{job.remarks}</p>
-          </div>
-        )}
+          <ReceiptActions job={job} variant="jobDetail" />
 
-        {job.status !== "Delivered" && isStaff && (
-          <Link
-            href={`/jobs/delivery?q=${encodeURIComponent(job.jobNumber)}`}
-            className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-          >
-            Go to Delivery
-          </Link>
-        )}
-
-        {isStaff && (
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-3 font-semibold text-slate-900">Reprint Customer Receipt</h3>
-            <ReceiptActions job={job} />
-          </div>
-        )}
+          {job.status !== "Delivered" && isStaff && (
+            <Link
+              href={`/jobs/delivery?q=${encodeURIComponent(job.jobNumber)}`}
+              className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Go to Delivery
+            </Link>
+          )}
+        </DetailSection>
 
         {job.statusHistory.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-3 font-semibold text-slate-900">Status History</h3>
-            <div className="space-y-3">
+          <DetailSection title="Status History">
+            <div className="space-y-4">
               {job.statusHistory.map((entry) => (
-                <div key={entry.id} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                <div key={entry.id} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
                   <div className="flex items-start justify-between gap-2">
                     <JobStatusBadge status={entry.status} />
                     <p className="text-xs text-slate-500">
@@ -538,16 +583,16 @@ export default function JobDetailPage() {
                       })}
                     </p>
                   </div>
-                  <p className="mt-1 text-xs text-slate-600">
+                  <p className="mt-1 text-sm text-slate-600">
                     Updated by: {formatStatusChangedBy(entry.changedBy)}
                   </p>
                   {entry.note && (
-                    <p className="mt-0.5 text-xs text-slate-500">{entry.note}</p>
+                    <p className="mt-0.5 text-sm text-slate-500">{entry.note}</p>
                   )}
                 </div>
               ))}
             </div>
-          </div>
+          </DetailSection>
         )}
       </div>
     </AppShell>
