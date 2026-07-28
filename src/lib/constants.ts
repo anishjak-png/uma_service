@@ -1,7 +1,29 @@
 export const APP_NAME = "UMA SERVICE";
 export const SHOP_NAME = process.env.NEXT_PUBLIC_SHOP_NAME ?? "Uma Traders";
 export const SHOP_PHONE = process.env.NEXT_PUBLIC_SHOP_PHONE ?? "";
-export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+/** Public base URL for tracking links, receipts, etc. */
+function resolveAppUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/$/, "");
+  }
+
+  const production = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (production) {
+    const host = production.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return `https://${host}`;
+  }
+
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) {
+    return `https://${vercel.replace(/\/$/, "")}`;
+  }
+
+  return "http://localhost:3000";
+}
+
+export const APP_URL = resolveAppUrl();
 
 export const MAX_PRODUCT_PHOTOS = 3;
 
