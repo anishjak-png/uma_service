@@ -1,18 +1,13 @@
 import { APP_URL } from "@/lib/constants";
 import { formatCurrency } from "@/lib/currency";
-import type { NotificationSettingsDto, TemplateVariables } from "./types";
+import type {
+  NotificationJobContext,
+  NotificationJobProduct,
+  NotificationSettingsDto,
+  TemplateVariables,
+} from "./types";
 
-type JobForTemplate = {
-  jobNumber: string;
-  applianceType: string;
-  brand: string;
-  model?: string | null;
-  complaint: string;
-  serviceAmount?: number | null;
-  customer: { name?: string | null; mobile: string };
-};
-
-export function buildProductName(job: JobForTemplate): string {
+export function buildProductName(job: NotificationJobProduct): string {
   return [job.brand, job.applianceType, job.model].filter(Boolean).join(" ");
 }
 
@@ -25,7 +20,7 @@ export function buildTrackingLink(
 }
 
 export function buildTemplateVariables(
-  job: JobForTemplate,
+  job: NotificationJobContext,
   settings: NotificationSettingsDto
 ): TemplateVariables {
   const trackingLink = buildTrackingLink(job.jobNumber, settings);
@@ -34,7 +29,7 @@ export function buildTemplateVariables(
     customer_name: job.customer.name?.trim() || "Customer",
     job_number: job.jobNumber,
     product_name: buildProductName(job),
-    complaint: job.complaint,
+    complaint: job.complaint?.trim() ?? "",
     service_amount: formatCurrency(job.serviceAmount),
     tracking_link: trackingLink,
   };

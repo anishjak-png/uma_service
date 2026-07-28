@@ -34,6 +34,26 @@ export type NotificationSettingsDto = {
   additionalHeaders: string | null;
 };
 
+/** Job fields used when building WhatsApp notification payloads (Meta + custom providers). */
+export type NotificationJobContext = {
+  jobNumber: string;
+  brand: string;
+  applianceType: string;
+  model?: string | null;
+  /** Non-Meta templates only — approved Meta templates do not include complaint */
+  complaint?: string | null;
+  serviceAmount?: number | null;
+  customer: {
+    name?: string | null;
+    mobile?: string;
+  };
+};
+
+export type NotificationJobProduct = Pick<
+  NotificationJobContext,
+  "brand" | "applianceType" | "model"
+>;
+
 export type TemplateVariables = {
   customer_name: string;
   job_number: string;

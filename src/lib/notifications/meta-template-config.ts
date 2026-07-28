@@ -1,7 +1,12 @@
 import type { NotificationEventType } from "@prisma/client";
 import { APP_URL } from "@/lib/constants";
 import { buildProductName } from "./job-context";
-import type { NotificationSettingsDto, MetaTemplatePayload, MetaTemplateVariableFormat } from "./types";
+import type {
+  NotificationJobContext,
+  NotificationSettingsDto,
+  MetaTemplatePayload,
+  MetaTemplateVariableFormat,
+} from "./types";
 
 /** Variable keys used in approved Meta WhatsApp templates. */
 export type MetaTemplateVariableKey =
@@ -74,15 +79,6 @@ export type MetaTemplateBuildResult =
     }
   | { ok: false; error: string };
 
-type JobForMeta = {
-  jobNumber: string;
-  applianceType: string;
-  brand: string;
-  model?: string | null;
-  serviceAmount?: number | null;
-  customer: { name?: string | null };
-};
-
 export function getMetaTemplateDefinition(
   eventType: NotificationEventType,
   settings: NotificationSettingsDto
@@ -112,7 +108,7 @@ export function getMetaTemplateDefinition(
 
 function resolveMetaVariableValue(
   key: MetaTemplateVariableKey,
-  job: JobForMeta,
+  job: NotificationJobContext,
   settings: NotificationSettingsDto
 ): string {
   switch (key) {
@@ -169,7 +165,7 @@ export function validateMetaTemplateVariables(
 
 export function buildMetaTemplatePayload(
   eventType: NotificationEventType,
-  job: JobForMeta,
+  job: NotificationJobContext,
   settings: NotificationSettingsDto
 ): MetaTemplateBuildResult {
   const definition = getMetaTemplateDefinition(eventType, settings);
