@@ -9,6 +9,7 @@ import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { WhatsAppAutomationTab } from "./WhatsAppAutomationTab";
 
 type Technician = {
   id: string;
@@ -27,6 +28,7 @@ type Customer = {
   name: string | null;
   mobile: string;
   address: string | null;
+  allowWhatsappNotifications: boolean;
   jobCount: number;
 };
 
@@ -40,7 +42,8 @@ export default function AdminContent() {
     tabFromUrl === "reports" ||
     tabFromUrl === "technicians" ||
     tabFromUrl === "appliances" ||
-    tabFromUrl === "customers"
+    tabFromUrl === "customers" ||
+    tabFromUrl === "whatsapp"
       ? tabFromUrl
       : "technicians";
 
@@ -52,6 +55,7 @@ export default function AdminContent() {
       requested === "technicians" ||
       requested === "appliances" ||
       requested === "customers" ||
+      requested === "whatsapp" ||
       requested === "reports"
     ) {
       setTab(requested);
@@ -66,7 +70,7 @@ export default function AdminContent() {
   }
 
   function handleSettingsTabChange(
-    next: "technicians" | "appliances" | "customers"
+    next: "technicians" | "appliances" | "customers" | "whatsapp"
   ) {
     handleTabChange(next);
   }
@@ -92,13 +96,14 @@ export default function AdminContent() {
     <AppShell>
       {tab !== "reports" && (
         <AdminTabs
-          active={tab as "technicians" | "appliances" | "customers"}
+          active={tab as "technicians" | "appliances" | "customers" | "whatsapp"}
           onChange={handleSettingsTabChange}
         />
       )}
       {tab === "technicians" && <TechniciansTab />}
       {tab === "appliances" && <AppliancesTab />}
       {tab === "customers" && <CustomersTab />}
+      {tab === "whatsapp" && <WhatsAppAutomationTab />}
       {tab === "reports" && <ReportsTab />}
     </AppShell>
   );
@@ -478,7 +483,12 @@ function CustomersTab() {
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState({ name: "", mobile: "", address: "" });
+  const [form, setForm] = useState({
+    name: "",
+    mobile: "",
+    address: "",
+    allowWhatsappNotifications: true,
+  });
 
   const search = useCallback(async (q: string) => {
     const params = q ? `?q=${encodeURIComponent(q)}` : "";
@@ -496,6 +506,7 @@ function CustomersTab() {
       name: c.name ?? "",
       mobile: c.mobile,
       address: c.address ?? "",
+      allowWhatsappNotifications: c.allowWhatsappNotifications,
     });
   }
 
@@ -558,6 +569,7 @@ function CustomersTab() {
                 <p className="text-xs text-slate-400">
                   {c.jobCount} job(s)
                   {c.address ? ` · ${c.address}` : ""}
+                  {!c.allowWhatsappNotifications ? " · WhatsApp off" : ""}
                 </p>
               </button>
             </li>
@@ -589,6 +601,20 @@ function CustomersTab() {
                   placeholder="Address"
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 />
+                <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm">
+                  <span className="font-medium text-slate-700">WhatsApp notifications</span>
+                  <input
+                    type="checkbox"
+                    checked={form.allowWhatsappNotifications}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        allowWhatsappNotifications: e.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                </label>
                 <Link
                   href={`/jobs/search?q=${editing.mobile}`}
                   className="block text-sm font-medium text-emerald-700 hover:underline"

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireStaff } from "@/lib/auth";
 import { normalizeMobile } from "@/lib/jobs";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, context: RouteContext) {
-  const session = await requireAdmin();
+  const session = await requireStaff(["reception", "admin"]);
   if (!session) {
-    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
   const { id } = await context.params;
@@ -29,9 +29,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const session = await requireAdmin();
+  const session = await requireStaff(["reception", "admin"]);
   if (!session) {
-    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
   const { id } = await context.params;
@@ -42,32 +42,59 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Customer not found" }, { status: 404 });
   }
 
-  const mobile = body.mobile ? normalizeMobile(body.mobile) : existing.mobile;
-  if (body.mobile && mobile.length !== 10) {
+  const isAdmin = session.role === "admin";
+  const data: Record<string, unknown> = {};
+
+  if (body.allowWhatsappNotifications !== undefined) {
+    data.allowWhatsappNotifications = Boolean(body.allowWhatsappNotifications);
+  }
+
+  if (isAdmin) {
+    const mobile = body.mobile ? normalizeMobile(body.mobile) : existing.mobile;
+    if (body.mobile && mobile.length !== 10) {
+      return NextResponse.json(
+        { error: "Valid 10-digit mobile required" },
+        { status: 400 }
+      );
+    }
+
+    if (body.mobile && mobile !== existing.mobile) {
+      const duplicate = await prisma.customer.findUnique({ where: { mobile } });
+      if (duplicate) {
+        return NextResponse.json(
+          { error: "Mobile number already in use" },
+          { status: 409 }
+        );
+      }
+    }
+
+    if (body.name !== undefined) {
+      data.name = body.name?.trim() || null;
+    }
+    if (body.mobile !== undefined) {
+      data.mobile = mobile;
+    }
+    if (body.address !== undefined) {
+      data.address = body.address?.trim() || null;
+    }
+  } else if (
+    body.name !== undefined ||
+    body.mobile !== undefined ||
+    body.address !== undefined
+  ) {
     return NextResponse.json(
-      { error: "Valid 10-digit mobile required" },
-      { status: 400 }
+      { error: "Reception can only update WhatsApp notification preference" },
+      { status: 403 }
     );
   }
 
-  if (mobile !== existing.mobile) {
-    const duplicate = await prisma.customer.findUnique({ where: { mobile } });
-    if (duplicate) {
-      return NextResponse.json(
-        { error: "Mobile number already in use" },
-        { status: 409 }
-      );
-    }
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
   const customer = await prisma.customer.update({
     where: { id },
-    data: {
-      name: body.name !== undefined ? body.name?.trim() || null : undefined,
-      mobile: body.mobile !== undefined ? mobile : undefined,
-      address:
-        body.address !== undefined ? body.address?.trim() || null : undefined,
-    },
+    data,
   });
 
   return NextResponse.json(customer);

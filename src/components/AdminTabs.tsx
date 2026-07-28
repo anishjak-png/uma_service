@@ -6,6 +6,7 @@ const tabs = [
   { id: "technicians", label: "Technicians" },
   { id: "appliances", label: "Appliances" },
   { id: "customers", label: "Customers" },
+  { id: "whatsapp", label: "WhatsApp" },
 ] as const;
 
 export type AdminSettingsTab = (typeof tabs)[number]["id"];

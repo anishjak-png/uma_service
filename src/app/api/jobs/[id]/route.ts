@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { parseServiceAmount } from "@/lib/currency";
@@ -12,6 +13,7 @@ import {
   isServiceAmountLocked,
 } from "@/lib/auth";
 import { getSession } from "@/lib/session";
+import { dispatchNotificationEvent } from "@/lib/notifications/events";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -196,6 +198,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.completedByTechnicianId = body.completedByTechnicianId || null;
     }
 
+    if (body.whatsappNotificationsOverride !== undefined) {
+      if (session.role !== "reception" && session.role !== "admin") {
+        return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+      }
+      if (body.whatsappNotificationsOverride === null) {
+        data.whatsappNotificationsOverride = null;
+      } else {
+        data.whatsappNotificationsOverride = Boolean(
+          body.whatsappNotificationsOverride
+        );
+      }
+    }
+
     const jobId = existing.id;
 
     if (statusChange) {
@@ -214,6 +229,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           select: jobPatchSelect,
         }),
       ]);
+
+      if (statusChange === "Ready" && !existing.readyAt) {
+        after(() =>
+          dispatchNotificationEvent({ type: "JOB_READY", jobId })
+        );
+      }
+      if (statusChange === "Return") {
+        after(() =>
+          dispatchNotificationEvent({ type: "JOB_RETURN", jobId })
+        );
+      }
 
       return NextResponse.json({ ...job, statusHistoryEntry });
     }

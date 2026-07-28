@@ -22,6 +22,7 @@ export const jobPatchSelect = {
   status: true,
   serviceAmount: true,
   remarks: true,
+  whatsappNotificationsOverride: true,
   readyAt: true,
   deliveredAt: true,
   assignedTechnician: { select: { id: true, name: true } },

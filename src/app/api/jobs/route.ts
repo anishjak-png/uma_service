@@ -186,6 +186,10 @@ export async function POST(request: NextRequest) {
   });
 
   after(async () => {
+    console.log("[Notification] Post-create tasks started", {
+      jobId: job.id,
+      jobNumber,
+    });
     const photoBuffers =
       photoFiles.length > 0 ? await readPhotoBuffers(photoFiles) : [];
     await runPostJobCreateTasks({

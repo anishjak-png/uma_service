@@ -9,13 +9,14 @@ datasource db {
 }
 
 model Customer {
-  id        String    @id @default(cuid())
-  name      String?
-  mobile    String    @unique
-  address   String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  jobCards  JobCard[]
+  id                         String    @id @default(cuid())
+  name                       String?
+  mobile                     String    @unique
+  address                    String?
+  allowWhatsappNotifications Boolean   @default(true)
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  jobCards                   JobCard[]
 }
 
 enum JobStatus {
@@ -65,8 +66,9 @@ model JobCard {
   productPhotos        String?
   serviceAmount        Float?
   status               JobStatus       @default(Pending)
-  remarks              String?
-  receivedAt           DateTime        @default(now())
+  remarks                      String?
+  whatsappNotificationsOverride Boolean?
+  receivedAt                   DateTime        @default(now())
   readyAt              DateTime?
   deliveredAt          DateTime?
   createdBy            String?
@@ -78,6 +80,7 @@ model JobCard {
   updatedAt                DateTime        @updatedAt
   statusHistory            StatusHistory[]
   printJobs                PrintJob[]
+  notificationLogs         NotificationLog[]
 
   @@index([customerId])
   @@index([status])
@@ -122,4 +125,75 @@ model PrintJob {
   printedAt DateTime?
 
   @@index([status, createdAt])
+}
+
+enum NotificationEventType {
+  JOB_CREATED
+  JOB_READY
+  JOB_RETURN
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+  PUSH
+}
+
+enum NotificationDeliveryStatus {
+  Pending
+  Sent
+  Failed
+  Skipped
+}
+
+enum WhatsAppProviderType {
+  meta
+  interakt
+  twilio
+  custom
+}
+
+model NotificationSettings {
+  id                  String               @id @default("default")
+  masterEnabled       Boolean              @default(true)
+  jobCreatedEnabled   Boolean              @default(true)
+  jobReadyEnabled     Boolean              @default(true)
+  jobReturnEnabled    Boolean              @default(true)
+  trackingLinkEnabled Boolean              @default(true)
+  provider            WhatsAppProviderType @default(meta)
+  apiUrl              String?
+  apiKey              String?
+  accessToken         String?
+  phoneNumberId       String?
+  whatsappBusinessAccountId String?
+  businessNumber      String?
+  additionalHeaders   String?
+  updatedAt           DateTime             @updatedAt
+}
+
+model NotificationTemplate {
+  id        String                @id @default(cuid())
+  eventType NotificationEventType @unique
+  body      String
+  updatedAt DateTime              @updatedAt
+}
+
+model NotificationLog {
+  id          String                     @id @default(cuid())
+  jobCardId   String
+  jobCard     JobCard                    @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  eventType   NotificationEventType
+  channel     NotificationChannel        @default(WHATSAPP)
+  status      NotificationDeliveryStatus
+  recipient   String
+  messageBody String?
+  provider    String?
+  externalId  String?
+  error       String?
+  manual      Boolean                    @default(false)
+  createdAt   DateTime                   @default(now())
+
+  @@index([jobCardId, eventType, channel])
+  @@index([createdAt])
 }

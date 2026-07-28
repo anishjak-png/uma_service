@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { ensureLookupOption, type LookupCategory } from "@/lib/lookups";
 import { enqueueReceiptPrint } from "@/lib/print-queue";
+import { dispatchNotificationEventAsync } from "@/lib/notifications/events";
 import {
   uploadProductPhotoBuffers,
   type PhotoBufferPayload,
@@ -27,9 +28,12 @@ export async function runPostJobCreateTasks(payload: PostJobCreatePayload) {
     ] as const
   ).map(([category, value]) => ensureLookupOption(category as LookupCategory, value));
 
+  console.log("[Notification] Job created", { jobId, jobNumber });
+
   await Promise.allSettled([
     ...lookupTasks,
     enqueueReceiptPrint(jobId),
+    dispatchNotificationEventAsync({ type: "JOB_CREATED", jobId }),
     photos.length > 0
       ? uploadProductPhotoBuffers(photos, jobNumber)
           .then((urls) =>

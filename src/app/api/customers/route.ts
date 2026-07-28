@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
       name: c.name,
       mobile: c.mobile,
       address: c.address,
+      allowWhatsappNotifications: c.allowWhatsappNotifications,
       jobCount: c._count.jobCards,
       updatedAt: c.updatedAt,
     }))

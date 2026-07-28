@@ -86,6 +86,13 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
       </section>
 
       <Link
+        href="/admin?tab=whatsapp"
+        className="block rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        WhatsApp Automation
+      </Link>
+
+      <Link
         href="/admin"
         className="block rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
       >

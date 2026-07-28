@@ -4,6 +4,8 @@ import { AppShell } from "@/components/AppShell";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
 import { ReceiptActions } from "@/components/ReceiptActions";
+import { WhatsAppActions } from "@/components/WhatsAppActions";
+import { JobNotificationSettings } from "@/components/JobNotificationSettings";
 import {
   getSelectableStatuses,
   isDeliveredTerminal,
@@ -33,9 +35,15 @@ type JobDetail = {
   receivedAt: string;
   readyAt?: string | null;
   deliveredAt?: string | null;
+  whatsappNotificationsOverride?: boolean | null;
   assignedTechnician?: { id: string; name: string } | null;
   completedByTechnician?: { id: string; name: string } | null;
-  customer: { id: string; mobile: string; name?: string | null };
+  customer: {
+    id: string;
+    mobile: string;
+    name?: string | null;
+    allowWhatsappNotifications: boolean;
+  };
   statusHistory: Array<{
     id: string;
     status: string;
@@ -526,6 +534,36 @@ export default function JobDetailPage() {
           </div>
         )}
 
+        {isStaff && (
+          <DetailSection title="Notification Settings">
+            <JobNotificationSettings
+              jobId={job.id}
+              customerId={job.customer.id}
+              customerMobile={job.customer.mobile}
+              customerAllows={job.customer.allowWhatsappNotifications ?? true}
+              jobOverride={job.whatsappNotificationsOverride}
+              onCustomerPreferenceChange={(allows) =>
+                setJob((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        customer: {
+                          ...prev.customer,
+                          allowWhatsappNotifications: allows,
+                        },
+                      }
+                    : prev
+                )
+              }
+              onJobOverrideChange={(override) =>
+                setJob((prev) =>
+                  prev ? { ...prev, whatsappNotificationsOverride: override } : prev
+                )
+              }
+            />
+          </DetailSection>
+        )}
+
         <DetailSection title="Actions">
           {!showReadyForm && selectableStatuses.length > 0 && (
             <div className="space-y-2">
@@ -555,6 +593,8 @@ export default function JobDetailPage() {
           )}
 
           <ReceiptActions job={job} variant="jobDetail" />
+
+          {isStaff && <WhatsAppActions jobId={job.id} jobStatus={job.status} />}
 
           {job.status !== "Delivered" && isStaff && (
             <Link
