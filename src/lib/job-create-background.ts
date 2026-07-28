@@ -30,10 +30,12 @@ export async function runPostJobCreateTasks(payload: PostJobCreatePayload) {
 
   console.log("[Notification] Job created", { jobId, jobNumber });
 
+  // Send WhatsApp first — serverless may freeze once slower background work finishes.
+  await dispatchNotificationEventAsync({ type: "JOB_CREATED", jobId });
+
   await Promise.allSettled([
     ...lookupTasks,
     enqueueReceiptPrint(jobId),
-    dispatchNotificationEventAsync({ type: "JOB_CREATED", jobId }),
     photos.length > 0
       ? uploadProductPhotoBuffers(photos, jobNumber)
           .then((urls) =>

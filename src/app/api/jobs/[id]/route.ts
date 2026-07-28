@@ -13,7 +13,7 @@ import {
   isServiceAmountLocked,
 } from "@/lib/auth";
 import { getSession } from "@/lib/session";
-import { dispatchNotificationEvent } from "@/lib/notifications/events";
+import { dispatchNotificationEventAsync } from "@/lib/notifications/events";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -231,14 +231,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       ]);
 
       if (statusChange === "Ready" && !existing.readyAt) {
-        after(() =>
-          dispatchNotificationEvent({ type: "JOB_READY", jobId })
-        );
+        after(async () => {
+          await dispatchNotificationEventAsync({ type: "JOB_READY", jobId });
+        });
       }
       if (statusChange === "Return") {
-        after(() =>
-          dispatchNotificationEvent({ type: "JOB_RETURN", jobId })
-        );
+        after(async () => {
+          await dispatchNotificationEventAsync({ type: "JOB_RETURN", jobId });
+        });
       }
 
       return NextResponse.json({ ...job, statusHistoryEntry });
