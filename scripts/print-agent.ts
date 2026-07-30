@@ -39,11 +39,13 @@ function sendToPrinter(data: Buffer): Promise<void> {
           reject(err);
           return;
         }
-        socket.end();
+        // Give printer time to print footer + feed before we close TCP.
+        const drainMs = Math.max(2000, Math.ceil(data.length / 40));
+        setTimeout(() => socket.end(), drainMs);
       });
     });
 
-    socket.setTimeout(10000);
+    socket.setTimeout(20000);
     socket.on("timeout", () => {
       socket.destroy();
       reject(new Error("Printer connection timed out"));
@@ -73,7 +75,6 @@ async function updateJobStatus(id: string, status: string, error?: string) {
 
 async function processJob(job: QueueJob) {
   console.log(`Printing ${job.jobNumber} (${job.id})…`);
-  await updateJobStatus(job.id, "printing");
 
   try {
     const buffer = Buffer.from(job.escPosBase64, "base64");
@@ -87,7 +88,12 @@ async function processJob(job: QueueJob) {
   }
 }
 
+let pollInFlight = false;
+
 async function poll() {
+  if (pollInFlight) return;
+  pollInFlight = true;
+
   try {
     const res = await agentFetch("/api/print-queue");
     if (!res.ok) {
@@ -101,6 +107,8 @@ async function poll() {
     }
   } catch (err) {
     console.error("Poll error:", err instanceof Error ? err.message : err);
+  } finally {
+    pollInFlight = false;
   }
 }
 
@@ -109,5 +117,12 @@ console.log(`  App:     ${APP_URL}`);
 console.log(`  Printer: ${PRINTER_HOST}:${PRINTER_PORT}`);
 console.log(`  Poll:    every ${POLL_MS}ms`);
 
-await poll();
-setInterval(poll, POLL_MS);
+async function main() {
+  await poll();
+  setInterval(poll, POLL_MS);
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+});

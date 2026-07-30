@@ -66,24 +66,80 @@ export function ReceiptActions({
     };
   }, [autoPoll, fetchPrintStatus]);
 
-  async function handleReprint() {
+  async function handleCounterPrint() {
     setReprinting(true);
     setStatus(null);
     try {
       const res = await fetch(`/api/jobs/${job.id}/print`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        setStatus(data.error ?? "Reprint failed");
+        setStatus(data.error ?? "Print failed");
         return;
       }
       setPrintStatus({ status: "Pending" });
       setStatus("Sent to counter printer…");
       await fetchPrintStatus();
     } catch {
-      setStatus("Reprint failed");
+      setStatus("Print failed");
     } finally {
       setReprinting(false);
     }
+  }
+
+  async function handleReprint() {
+    await handleCounterPrint();
+  }
+
+  function escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function handleBrowserPrint() {
+    setStatus(null);
+    const html = `<!DOCTYPE html>
+<html><head><title>Receipt ${escapeHtml(job.jobNumber)}</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  body { font-family: "Courier New", Courier, monospace; font-size: 12px; padding: 8px; max-width: 80mm; margin: 0 auto; }
+  pre { white-space: pre-wrap; word-wrap: break-word; margin: 0; }
+</style></head>
+<body><pre>${escapeHtml(receiptText)}</pre></body></html>`;
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.cssText =
+      "position:fixed;right:0;bottom:0;width:0;height:0;border:none;visibility:hidden";
+    document.body.appendChild(iframe);
+
+    const frameWindow = iframe.contentWindow;
+    const frameDoc = frameWindow?.document;
+    if (!frameWindow || !frameDoc) {
+      document.body.removeChild(iframe);
+      setStatus("Could not open print preview");
+      return;
+    }
+
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+
+    window.setTimeout(() => {
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+        setStatus("Print dialog opened — choose your printer");
+      } catch {
+        setStatus("Print blocked — use Reprint Receipt for counter printer");
+      } finally {
+        window.setTimeout(() => {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        }, 1000);
+      }
+    }, 300);
   }
 
   async function handleBluetoothPrint() {
@@ -97,22 +153,6 @@ export function ReceiptActions({
     } finally {
       setPrinting(false);
     }
-  }
-
-  function handleBrowserPrint() {
-    const win = window.open("", "_blank", "width=400,height=600");
-    if (!win) return;
-    win.document.write(`
-      <html><head><title>Receipt ${job.jobNumber}</title>
-      <style>
-        body { font-family: monospace; font-size: 12px; padding: 16px; max-width: 320px; margin: 0 auto; }
-        pre { white-space: pre-wrap; word-wrap: break-word; }
-      </style></head>
-      <body><pre>${receiptText}</pre>
-      <script>window.onload = () => { window.print(); }</script>
-      </body></html>
-    `);
-    win.document.close();
   }
 
   const printState = printStatus?.status;
@@ -141,10 +181,11 @@ export function ReceiptActions({
         {variant === "jobDetail" ? (
           <>
             <button
-              onClick={handleBrowserPrint}
-              className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+              onClick={handleCounterPrint}
+              disabled={reprinting}
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
             >
-              Print Receipt
+              {reprinting ? "Sending…" : "Print Receipt"}
             </button>
             <button
               onClick={handleReprint}
@@ -152,6 +193,12 @@ export function ReceiptActions({
               className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
             >
               {reprinting ? "Sending…" : "Reprint Receipt"}
+            </button>
+            <button
+              onClick={handleBrowserPrint}
+              className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Print / PDF
             </button>
           </>
         ) : (

@@ -11,7 +11,7 @@
     "db:studio": "node node_modules/prisma/build/index.js studio",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:setup": "node node_modules/prisma/build/index.js db push && npx tsx prisma/seed.ts",
-    "print-agent": "tsx --env-file=.env scripts/print-agent.ts",
+    "print-agent": "npx tsx --env-file=.env scripts/print-agent.ts",
     "postinstall": "node node_modules/prisma/build/index.js generate"
   },
   "dependencies": {

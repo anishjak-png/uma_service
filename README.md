@@ -65,7 +65,7 @@ Full Supabase setup: **[docs/SUPABASE.md](docs/SUPABASE.md)**
 
 Print agent on shop PC polls the **cloud app**; data stays in Supabase.
 
-See [docs/SUPABASE.md](docs/SUPABASE.md) § Print agent.
+See [docs/PRINT_SETUP.md](PRINT_SETUP.md) for full setup (local test + shop PC).
 
 ## Daily Workflow
 

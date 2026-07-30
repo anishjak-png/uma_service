@@ -44,6 +44,42 @@ export async function fetchPendingPrintJobs(limit = 10) {
   });
 }
 
+/** Atomically claim pending jobs so overlapping polls/agents cannot reprint the same receipt. */
+export async function claimPendingPrintJobs(limit = 10) {
+  const claimed: Awaited<ReturnType<typeof fetchPendingPrintJobs>> = [];
+
+  for (let i = 0; i < limit; i++) {
+    const next = await prisma.printJob.findFirst({
+      where: {
+        status: "Pending",
+        attempts: { lt: MAX_ATTEMPTS },
+      },
+      orderBy: { createdAt: "asc" },
+      include: {
+        jobCard: {
+          include: { customer: true },
+        },
+      },
+    });
+
+    if (!next) break;
+
+    const updated = await prisma.printJob.updateMany({
+      where: { id: next.id, status: "Pending" },
+      data: {
+        status: "Printing",
+        attempts: { increment: 1 },
+      },
+    });
+
+    if (updated.count === 1) {
+      claimed.push(next);
+    }
+  }
+
+  return claimed;
+}
+
 export async function markPrintJobPrinting(id: string) {
   return prisma.printJob.update({
     where: { id },

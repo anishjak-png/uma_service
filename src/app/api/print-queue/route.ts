@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  fetchPendingPrintJobs,
+  claimPendingPrintJobs,
   verifyPrintAgentKey,
 } from "@/lib/print-queue";
 import { buildEscPosReceipt, buildReceiptData } from "@/lib/thermal";
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const jobs = await fetchPendingPrintJobs(10);
+  const jobs = await claimPendingPrintJobs(10);
 
   const payload = jobs.map((job) => {
     const receiptData = buildReceiptData({
