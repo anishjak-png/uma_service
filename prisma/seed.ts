@@ -160,18 +160,19 @@ async function pruneRemovedAppliances() {
   }
 
   // Drop orphaned mappings if appliance lookup was removed earlier
-  for (const table of [
-    prisma.applianceTechnician,
-    prisma.applianceBrand,
-    prisma.applianceComplaint,
-  ] as const) {
-    const rows = await table.findMany();
-    for (const row of rows) {
-      const applianceType =
-        "applianceType" in row ? row.applianceType : "";
-      if (!allowed.has(applianceType)) {
-        await table.deleteMany({ where: { id: row.id } });
-      }
+  for (const row of await prisma.applianceTechnician.findMany()) {
+    if (!allowed.has(row.applianceType)) {
+      await prisma.applianceTechnician.delete({ where: { id: row.id } });
+    }
+  }
+  for (const row of await prisma.applianceBrand.findMany()) {
+    if (!allowed.has(row.applianceType)) {
+      await prisma.applianceBrand.delete({ where: { id: row.id } });
+    }
+  }
+  for (const row of await prisma.applianceComplaint.findMany()) {
+    if (!allowed.has(row.applianceType)) {
+      await prisma.applianceComplaint.delete({ where: { id: row.id } });
     }
   }
 }
