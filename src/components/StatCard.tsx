@@ -29,7 +29,7 @@ export function StatCard({
 
   if (href) {
     return (
-      <Link href={href} className="block">
+      <Link href={href} className="block cursor-pointer">
         {content}
       </Link>
     );

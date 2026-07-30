@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { ACTIVE_STATUSES } from "@/lib/constants";
 import {
   detectSearchQueryType,
   normalizeJobNumberQuery,
   normalizeMobile,
 } from "@/lib/jobs";
 import { jobListSelect } from "@/lib/job-selects";
+import { daysAgo, getPeriodRange, type ReportPeriod } from "@/lib/reports";
 import { getSession } from "@/lib/session";
 
 function technicianScopeWhere(
@@ -24,6 +26,107 @@ function technicianScopeWhere(
   return {};
 }
 
+function parseReportPeriod(raw: string | null): ReportPeriod | null {
+  if (raw === "today" || raw === "month" || raw === "year") return raw;
+  return null;
+}
+
+async function browseJobsResponse(params: {
+  session: Awaited<ReturnType<typeof getSession>>;
+  scopeWhere: Record<string, unknown>;
+  status: string | null;
+  technicianId: string | null;
+  applianceType: string | null;
+  brand: string | null;
+  minAgeDays: string | null;
+  activeOnly: boolean;
+  receivedPeriod: ReportPeriod | null;
+  deliveredPeriod: ReportPeriod | null;
+  readyPeriod: ReportPeriod | null;
+  completedByTechnicianId: string | null;
+}) {
+  const {
+    session,
+    scopeWhere,
+    status,
+    technicianId,
+    applianceType,
+    brand,
+    minAgeDays,
+    activeOnly,
+    receivedPeriod,
+    deliveredPeriod,
+    readyPeriod,
+    completedByTechnicianId,
+  } = params;
+
+  if (!session.isLoggedIn) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const where: Record<string, unknown> = { ...scopeWhere };
+
+  if (status && status !== "all") {
+    where.status = status as JobStatus;
+  } else if (activeOnly) {
+    where.status = { in: [...ACTIVE_STATUSES] };
+  }
+
+  if (technicianId) {
+    where.assignedTechnicianId = technicianId;
+  }
+
+  if (completedByTechnicianId) {
+    where.completedByTechnicianId = completedByTechnicianId;
+  }
+
+  if (applianceType) {
+    where.applianceType = applianceType;
+  }
+
+  if (brand) {
+    where.brand = brand;
+  }
+
+  if (minAgeDays) {
+    const days = Number.parseInt(minAgeDays, 10);
+    if (!Number.isNaN(days) && days > 0) {
+      where.status = "Pending";
+      where.receivedAt = { lt: daysAgo(days) };
+    }
+  }
+
+  if (receivedPeriod) {
+    const { start, end } = getPeriodRange(receivedPeriod);
+    where.receivedAt = { gte: start, lt: end };
+  }
+
+  if (deliveredPeriod) {
+    const { start, end } = getPeriodRange(deliveredPeriod);
+    where.status = "Delivered";
+    where.deliveredAt = { gte: start, lt: end };
+  }
+
+  if (readyPeriod) {
+    const { start, end } = getPeriodRange(readyPeriod);
+    where.readyAt = { gte: start, lt: end };
+  }
+
+  const jobs = await prisma.jobCard.findMany({
+    where,
+    select: jobListSelect,
+    orderBy: { receivedAt: "desc" },
+    take: 100,
+  });
+
+  return NextResponse.json({
+    mode: "jobs",
+    searchType: "browse",
+    customer: null,
+    jobs,
+  });
+}
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   const { searchParams } = request.nextUrl;
@@ -31,8 +134,47 @@ export async function GET(request: NextRequest) {
   const customerId = searchParams.get("customerId");
   const status = searchParams.get("status");
   const scopeParam = searchParams.get("scope");
+  const technicianId = searchParams.get("technicianId");
+  const applianceType = searchParams.get("applianceType");
+  const brand = searchParams.get("brand");
+  const minAgeDays = searchParams.get("minAgeDays");
+  const activeOnly = searchParams.get("active") === "true";
+  const receivedPeriod = parseReportPeriod(searchParams.get("receivedPeriod"));
+  const deliveredPeriod = parseReportPeriod(searchParams.get("deliveredPeriod"));
+  const readyPeriod = parseReportPeriod(searchParams.get("readyPeriod"));
+  const completedByTechnicianId = searchParams.get("completedByTechnicianId");
 
   const scopeWhere = technicianScopeWhere(session, scopeParam);
+  const hasBrowseFilter = Boolean(
+    (status && status !== "all") ||
+      technicianId ||
+      applianceType ||
+      brand ||
+      minAgeDays ||
+      activeOnly ||
+      receivedPeriod ||
+      deliveredPeriod ||
+      readyPeriod ||
+      completedByTechnicianId
+  );
+
+  if (!q && !customerId && hasBrowseFilter) {
+    return browseJobsResponse({
+      session,
+      scopeWhere,
+      status: status ?? null,
+      technicianId,
+      applianceType,
+      brand,
+      minAgeDays,
+      activeOnly,
+      receivedPeriod,
+      deliveredPeriod,
+      readyPeriod,
+      completedByTechnicianId,
+    });
+  }
+
   const statusWhere =
     status && status !== "all" ? { status: status as JobStatus } : {};
 

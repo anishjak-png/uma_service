@@ -38,7 +38,7 @@ type CustomerPick = CustomerInfo & { jobCount: number };
 type SearchResponse =
   | {
       mode: "jobs";
-      searchType: "empty" | "mobile" | "ut" | "name";
+      searchType: "empty" | "mobile" | "ut" | "name" | "browse";
       customer: CustomerInfo | null;
       totalVisits?: number;
       jobs: JobResult[];
@@ -65,6 +65,15 @@ export default function SearchContent() {
   const initialQ = searchParams.get("q") ?? "";
   const initialStatus = searchParams.get("status") ?? "all";
   const initialCustomerId = searchParams.get("customerId") ?? "";
+  const initialTechnicianId = searchParams.get("technicianId") ?? "";
+  const initialApplianceType = searchParams.get("applianceType") ?? "";
+  const initialBrand = searchParams.get("brand") ?? "";
+  const initialMinAgeDays = searchParams.get("minAgeDays") ?? "";
+  const initialActive = searchParams.get("active") === "true";
+  const initialReceivedPeriod = searchParams.get("receivedPeriod") ?? "";
+  const initialDeliveredPeriod = searchParams.get("deliveredPeriod") ?? "";
+  const initialReadyPeriod = searchParams.get("readyPeriod") ?? "";
+  const initialCompletedBy = searchParams.get("completedByTechnicianId") ?? "";
 
   const [query, setQuery] = useState(initialQ);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
@@ -80,7 +89,18 @@ export default function SearchContent() {
       status: string,
       selectedCustomerId: string,
       jobScope: TechnicianJobScope,
-      isTechnician: boolean
+      isTechnician: boolean,
+      browse: {
+        technicianId?: string;
+        applianceType?: string;
+        brand?: string;
+        minAgeDays?: string;
+        active?: boolean;
+        receivedPeriod?: string;
+        deliveredPeriod?: string;
+        readyPeriod?: string;
+        completedByTechnicianId?: string;
+      } = {}
     ) => {
       setLoading(true);
       const params = new URLSearchParams();
@@ -91,6 +111,17 @@ export default function SearchContent() {
       }
       if (status !== "all") params.set("status", status);
       if (isTechnician) params.set("scope", jobScope);
+      if (browse.technicianId) params.set("technicianId", browse.technicianId);
+      if (browse.applianceType) params.set("applianceType", browse.applianceType);
+      if (browse.brand) params.set("brand", browse.brand);
+      if (browse.minAgeDays) params.set("minAgeDays", browse.minAgeDays);
+      if (browse.active) params.set("active", "true");
+      if (browse.receivedPeriod) params.set("receivedPeriod", browse.receivedPeriod);
+      if (browse.deliveredPeriod) params.set("deliveredPeriod", browse.deliveredPeriod);
+      if (browse.readyPeriod) params.set("readyPeriod", browse.readyPeriod);
+      if (browse.completedByTechnicianId) {
+        params.set("completedByTechnicianId", browse.completedByTechnicianId);
+      }
 
       const res = await fetch(`/api/jobs/search?${params}`);
       const data = await res.json();
@@ -98,6 +129,31 @@ export default function SearchContent() {
       setLoading(false);
     },
     []
+  );
+
+  const browseParams = {
+    technicianId: initialTechnicianId || undefined,
+    applianceType: initialApplianceType || undefined,
+    brand: initialBrand || undefined,
+    minAgeDays: initialMinAgeDays || undefined,
+    active: initialActive || undefined,
+    receivedPeriod: initialReceivedPeriod || undefined,
+    deliveredPeriod: initialDeliveredPeriod || undefined,
+    readyPeriod: initialReadyPeriod || undefined,
+    completedByTechnicianId: initialCompletedBy || undefined,
+  };
+
+  const hasBrowseFilter = Boolean(
+    initialStatus !== "all" ||
+      initialTechnicianId ||
+      initialApplianceType ||
+      initialBrand ||
+      initialMinAgeDays ||
+      initialActive ||
+      initialReceivedPeriod ||
+      initialDeliveredPeriod ||
+      initialReadyPeriod ||
+      initialCompletedBy
   );
 
   useEffect(() => {
@@ -112,12 +168,22 @@ export default function SearchContent() {
       initialStatus,
       initialCustomerId,
       role === "technician" ? scope : "all",
-      role === "technician"
+      role === "technician",
+      browseParams
     );
   }, [
     initialQ,
     initialStatus,
     initialCustomerId,
+    initialTechnicianId,
+    initialApplianceType,
+    initialBrand,
+    initialMinAgeDays,
+    initialActive,
+    initialReceivedPeriod,
+    initialDeliveredPeriod,
+    initialReadyPeriod,
+    initialCompletedBy,
     role,
     roleLoaded,
     scope,
@@ -134,6 +200,15 @@ export default function SearchContent() {
       params.set("q", q.trim());
     }
     if (status !== "all") params.set("status", status);
+    if (initialTechnicianId) params.set("technicianId", initialTechnicianId);
+    if (initialApplianceType) params.set("applianceType", initialApplianceType);
+    if (initialBrand) params.set("brand", initialBrand);
+    if (initialMinAgeDays) params.set("minAgeDays", initialMinAgeDays);
+    if (initialActive) params.set("active", "true");
+    if (initialReceivedPeriod) params.set("receivedPeriod", initialReceivedPeriod);
+    if (initialDeliveredPeriod) params.set("deliveredPeriod", initialDeliveredPeriod);
+    if (initialReadyPeriod) params.set("readyPeriod", initialReadyPeriod);
+    if (initialCompletedBy) params.set("completedByTechnicianId", initialCompletedBy);
     router.replace(`/jobs/search?${params.toString()}`, { scroll: false });
   }
 
@@ -147,7 +222,8 @@ export default function SearchContent() {
       status,
       selectedCustomerId,
       role === "technician" ? scope : "all",
-      role === "technician"
+      role === "technician",
+      browseParams
     );
   }
 
@@ -196,7 +272,7 @@ export default function SearchContent() {
   const totalVisits = response?.mode === "jobs" ? response.totalVisits : undefined;
   const customerPicks =
     response?.mode === "customer_pick" ? response.customers : [];
-  const hasActiveSearch = Boolean(query.trim() || customerId);
+  const hasActiveSearch = Boolean(query.trim() || customerId || hasBrowseFilter);
 
   return (
     <AppShell>
@@ -217,6 +293,11 @@ export default function SearchContent() {
 
       {hasActiveSearch && (
         <div className="mb-3 flex flex-wrap gap-1.5">
+          {hasBrowseFilter && !query.trim() && !customerId ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+              Report filter — tap a job to open
+            </span>
+          ) : null}
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}

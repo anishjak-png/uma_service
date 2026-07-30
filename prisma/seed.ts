@@ -2,58 +2,130 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const APPLIANCES = [
-  "TV",
-  "AC",
-  "Refrigerator",
-  "Washing Machine",
+/** Only these product types appear when creating jobs. */
+export const APPLIANCES = [
+  "Cooker",
+  "Mixie",
+  "Gas Stove",
+  "Iron Box",
+  "Kettle",
   "Microwave",
+  "Table Top Grinder",
+  "Sewing Machine",
   "Water Heater",
-  "Mixer Grinder",
-  "Iron",
-  "Other",
+  "Induction Stove",
+  "Pedestal Fan",
+  "Table Fan",
+  "Ceiling Fan",
+  "Mosquito Bat",
 ];
 
 const BRANDS = [
+  "Prestige",
+  "Anantha",
+  "Mithra",
+  "Hawkins",
+  "Ideal",
+  "Pigeon",
+  "Lakshmi",
+  "Crompton",
+  "Remi",
+  "Polar",
+  "TN",
+  "Surya",
+  "Butterfly",
+  "Preethi",
+  "Dekuk",
+  "Vidiem",
+  "Vguard",
+  "Philips",
+  "Bajaj",
   "Samsung",
   "LG",
-  "Sony",
-  "Whirlpool",
-  "IFB",
-  "Godrej",
-  "Voltas",
-  "Daikin",
-  "Panasonic",
-  "Haier",
-  "Other",
+  "Merrit",
+  "Usha",
+  "Singer",
+  "Amirtha",
+  "Sowbagya",
+  "Hunter",
+  "Others",
 ];
 
 const COMPLAINTS = [
   "Not powering on",
-  "No display",
-  "Not cooling",
-  "Water leakage",
+  "Not heating",
   "Strange noise",
-  "Not spinning",
-  "Remote not working",
-  "Gas refill needed",
+  "Water leakage",
+  "Switch/cord issue",
   "General service",
   "Other",
 ];
 
-const TECHNICIANS = ["Ravi", "Kumar", "Suresh", "Anand"];
+const TECHNICIANS = ["Jeeva", "Kaja", "Prasanth", "Sameer", "Vijay"];
 
-/** Default appliance → technician routing for follow-up */
 const APPLIANCE_ROUTING: Record<string, string> = {
-  TV: "Ravi",
-  AC: "Kumar",
-  Refrigerator: "Suresh",
-  "Washing Machine": "Anand",
-  Microwave: "Ravi",
-  "Water Heater": "Kumar",
-  "Mixer Grinder": "Anand",
-  Iron: "Suresh",
-  Other: "Ravi",
+  Mixie: "Prasanth",
+  "Gas Stove": "Jeeva",
+  "Iron Box": "Jeeva",
+  Kettle: "Prasanth",
+  "Table Top Grinder": "Vijay",
+  "Sewing Machine": "Sameer",
+  "Induction Stove": "Kaja",
+  "Pedestal Fan": "Sameer",
+  "Table Fan": "Sameer",
+  "Ceiling Fan": "Sameer",
+  "Mosquito Bat": "Kaja",
+};
+
+const APPLIANCE_BRANDS: Record<string, string[]> = {
+  Cooker: [
+    "Prestige",
+    "Anantha",
+    "Mithra",
+    "Hawkins",
+    "Ideal",
+    "Pigeon",
+    "Lakshmi",
+    "Others",
+  ],
+  Mixie: ["Preethi", "Prestige", "Butterfly", "Philips", "Others"],
+  "Gas Stove": [
+    "Surya",
+    "Butterfly",
+    "Preethi",
+    "Dekuk",
+    "Vidiem",
+    "Prestige",
+    "Others",
+  ],
+  "Iron Box": ["Preethi", "Bajaj", "Philips", "Crompton", "Others"],
+  Kettle: ["Prestige", "Remi", "Preethi", "Pigeon", "Others"],
+  Microwave: ["Bajaj", "Samsung", "LG", "Others"],
+  "Table Top Grinder": ["Amirtha", "Sowbagya", "Lakshmi", "TN", "Others"],
+  "Sewing Machine": ["Merrit", "Usha", "Singer", "Others"],
+  "Water Heater": ["Vguard", "Bajaj", "Crompton", "Others"],
+  "Induction Stove": ["Prestige", "Vguard", "Pigeon", "Philips", "Preethi", "Others"],
+  "Pedestal Fan": ["Crompton", "Remi", "Polar", "Others"],
+  "Table Fan": ["Crompton", "Remi", "Polar", "TN", "Others"],
+  "Ceiling Fan": ["Crompton", "Remi", "Polar", "Others"],
+  "Mosquito Bat": ["Hunter", "Others"],
+};
+
+const APPLIANCE_COMPLAINTS: Record<string, string[]> = {
+  Cooker: ["Not powering on", "Not heating", "Water leakage", "General service", "Other"],
+  Mixie: ["Not powering on", "Strange noise", "General service", "Other"],
+  "Gas Stove": ["Not powering on", "Not heating", "General service", "Other"],
+  "Iron Box": ["Not powering on", "Not heating", "General service", "Other"],
+  Kettle: ["Not powering on", "Not heating", "Water leakage", "General service", "Other"],
+  Microwave: ["Not powering on", "Not heating", "Strange noise", "General service", "Other"],
+  "Table Top Grinder": ["Not powering on", "Strange noise", "General service", "Other"],
+  "Sewing Machine": ["Not powering on", "Strange noise", "General service", "Other"],
+  "Water Heater": ["Not powering on", "Not heating", "Water leakage", "General service", "Other"],
+  "Induction Stove": ["Not powering on", "Not heating", "General service", "Other"],
+  "Pedestal Fan": ["Not powering on", "Strange noise", "General service", "Other"],
+  "Table Fan": ["Not powering on", "Strange noise", "General service", "Other"],
+  "Ceiling Fan": ["Not powering on", "Strange noise", "General service", "Other"],
+  "Mosquito Bat": ["Not powering on", "General service", "Other"],
 };
 
 async function seedLookups(category: string, values: string[]) {
@@ -66,10 +138,100 @@ async function seedLookups(category: string, values: string[]) {
   }
 }
 
+async function pruneRemovedAppliances() {
+  const allowed = new Set(APPLIANCES);
+  const existing = await prisma.lookupOption.findMany({
+    where: { category: "appliance" },
+  });
+
+  for (const option of existing) {
+    if (allowed.has(option.value)) continue;
+
+    await prisma.applianceTechnician.deleteMany({
+      where: { applianceType: option.value },
+    });
+    await prisma.applianceBrand.deleteMany({
+      where: { applianceType: option.value },
+    });
+    await prisma.applianceComplaint.deleteMany({
+      where: { applianceType: option.value },
+    });
+    await prisma.lookupOption.delete({ where: { id: option.id } });
+  }
+
+  // Drop orphaned mappings if appliance lookup was removed earlier
+  for (const table of [
+    prisma.applianceTechnician,
+    prisma.applianceBrand,
+    prisma.applianceComplaint,
+  ] as const) {
+    const rows = await table.findMany();
+    for (const row of rows) {
+      const applianceType =
+        "applianceType" in row ? row.applianceType : "";
+      if (!allowed.has(applianceType)) {
+        await table.deleteMany({ where: { id: row.id } });
+      }
+    }
+  }
+}
+
+async function seedApplianceLookups() {
+  const allowed = new Set(APPLIANCES);
+
+  for (const [applianceType, brands] of Object.entries(APPLIANCE_BRANDS)) {
+    if (!allowed.has(applianceType)) continue;
+    for (const brand of brands) {
+      await prisma.applianceBrand.upsert({
+        where: { applianceType_brand: { applianceType, brand } },
+        update: {},
+        create: { applianceType, brand },
+      });
+    }
+  }
+
+  for (const [applianceType, complaints] of Object.entries(APPLIANCE_COMPLAINTS)) {
+    if (!allowed.has(applianceType)) continue;
+    for (const complaint of complaints) {
+      await prisma.applianceComplaint.upsert({
+        where: { applianceType_complaint: { applianceType, complaint } },
+        update: {},
+        create: { applianceType, complaint },
+      });
+    }
+  }
+
+  // Remove brand/complaint mappings for allowed types that were redefined
+  for (const applianceType of allowed) {
+    const allowedBrands = new Set(APPLIANCE_BRANDS[applianceType] ?? []);
+    const allowedComplaints = new Set(APPLIANCE_COMPLAINTS[applianceType] ?? []);
+
+    const brandRows = await prisma.applianceBrand.findMany({
+      where: { applianceType },
+    });
+    for (const row of brandRows) {
+      if (!allowedBrands.has(row.brand)) {
+        await prisma.applianceBrand.delete({ where: { id: row.id } });
+      }
+    }
+
+    const complaintRows = await prisma.applianceComplaint.findMany({
+      where: { applianceType },
+    });
+    for (const row of complaintRows) {
+      if (!allowedComplaints.has(row.complaint)) {
+        await prisma.applianceComplaint.delete({ where: { id: row.id } });
+      }
+    }
+  }
+}
+
 async function main() {
+  await pruneRemovedAppliances();
   await seedLookups("appliance", APPLIANCES);
   await seedLookups("brand", BRANDS);
   await seedLookups("complaint", COMPLAINTS);
+  await seedApplianceLookups();
 
   for (const name of TECHNICIANS) {
     await prisma.technician.upsert({
@@ -90,13 +252,23 @@ async function main() {
     });
   }
 
+  // Remove technician routing for products no longer offered or unassigned
+  const allowed = new Set(APPLIANCES);
+  const routed = new Set(Object.keys(APPLIANCE_ROUTING));
+  const routings = await prisma.applianceTechnician.findMany();
+  for (const routing of routings) {
+    if (!allowed.has(routing.applianceType) || !routed.has(routing.applianceType)) {
+      await prisma.applianceTechnician.delete({ where: { id: routing.id } });
+    }
+  }
+
   await prisma.jobSequence.upsert({
     where: { id: 1 },
     update: {},
     create: { id: 1, lastNum: 0 },
   });
 
-  console.log("Seed completed");
+  console.log("Seed completed — product types:", APPLIANCES.join(", "));
 }
 
 main()

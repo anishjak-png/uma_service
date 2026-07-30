@@ -24,8 +24,6 @@ type CreatedJob = {
 
 type LookupOptions = {
   appliance: Array<{ value: string }>;
-  brand: Array<{ value: string }>;
-  complaint: Array<{ value: string }>;
 };
 
 export default function NewJobPage() {
@@ -45,20 +43,46 @@ export default function NewJobPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [assignedTechName, setAssignedTechName] = useState<string | null>(null);
+  const [lookupsLoading, setLookupsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [createdJob, setCreatedJob] = useState<CreatedJob | null>(null);
 
   useEffect(() => {
-    fetch("/api/lookups?categories=appliance,brand,complaint")
+    fetch("/api/lookups?category=appliance")
       .then((r) => r.json())
-      .then((data: LookupOptions) => {
-        setLookupOptions({
-          appliance: data.appliance?.map((o) => o.value) ?? [],
-          brand: data.brand?.map((o) => o.value) ?? [],
-          complaint: data.complaint?.map((o) => o.value) ?? [],
-        });
+      .then((data: LookupOptions["appliance"]) => {
+        setLookupOptions((prev) => ({
+          ...prev,
+          appliance: data?.map((o) => o.value) ?? [],
+        }));
       });
+  }, []);
+
+  const loadProductLookups = useCallback(async (appliance: string) => {
+    if (!appliance) {
+      setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [] }));
+      return;
+    }
+
+    setLookupsLoading(true);
+    try {
+      const res = await fetch(
+        `/api/appliance-lookups?applianceType=${encodeURIComponent(appliance)}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [] }));
+        return;
+      }
+      setLookupOptions((prev) => ({
+        ...prev,
+        brand: data.brands ?? [],
+        complaint: data.complaints ?? [],
+      }));
+    } finally {
+      setLookupsLoading(false);
+    }
   }, []);
 
   function handleLookupOptionsChange(
@@ -93,6 +117,12 @@ export default function NewJobPage() {
         m.applianceType === appliance
     );
     setAssignedTechName(match?.technician?.name ?? null);
+  }
+
+  async function handleApplianceSelect(appliance: string) {
+    setBrand("");
+    setComplaint("");
+    await Promise.all([fetchAssignedTech(appliance), loadProductLookups(appliance)]);
   }
 
   function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -130,6 +160,7 @@ export default function NewJobPage() {
     setPhotoFiles([]);
     setPhotoPreviews([]);
     setAssignedTechName(null);
+    setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [] }));
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -278,7 +309,7 @@ export default function NewJobPage() {
               label="Product Type"
               value={applianceType}
               onChange={setApplianceType}
-              onSelect={fetchAssignedTech}
+              onSelect={handleApplianceSelect}
               options={lookupOptions.appliance}
               onOptionsChange={handleLookupOptionsChange}
               required
@@ -290,6 +321,14 @@ export default function NewJobPage() {
               </p>
             )}
 
+            {!applianceType ? (
+              <p className="text-xs text-slate-500">
+                Select a product type to see available brands and complaints.
+              </p>
+            ) : lookupsLoading ? (
+              <p className="text-xs text-slate-500">Loading brands and complaints…</p>
+            ) : null}
+
             <CreatableSelect
               category="brand"
               label="Brand"
@@ -297,6 +336,8 @@ export default function NewJobPage() {
               onChange={setBrand}
               options={lookupOptions.brand}
               onOptionsChange={handleLookupOptionsChange}
+              applianceType={applianceType}
+              disabled={!applianceType || lookupsLoading}
               required
             />
 
@@ -318,6 +359,8 @@ export default function NewJobPage() {
               onChange={setComplaint}
               options={lookupOptions.complaint}
               onOptionsChange={handleLookupOptionsChange}
+              applianceType={applianceType}
+              disabled={!applianceType || lookupsLoading}
               required
               placeholder="Select or add complaint"
             />

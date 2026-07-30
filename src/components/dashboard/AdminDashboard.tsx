@@ -44,13 +44,27 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
           subtext="Ready, not delivered"
           valueClassName="text-amber-800"
         />
-        <Link
-          href="/admin?tab=reports"
-          className="flex items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-center text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-        >
-          Reports &amp; Analytics
-        </Link>
       </div>
+
+      <section>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Quick Actions
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            href="/jobs/new"
+            className="rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            New Job
+          </Link>
+          <Link
+            href="/jobs/delivery"
+            className="rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Delivery
+          </Link>
+        </div>
+      </section>
 
       <section>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -90,13 +104,6 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
         className="block rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
       >
         WhatsApp Automation
-      </Link>
-
-      <Link
-        href="/admin"
-        className="block rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
-      >
-        Admin Settings
       </Link>
     </div>
   );

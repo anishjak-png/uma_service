@@ -80,50 +80,48 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
   const technicians = await prisma.technician.findMany({
     where: { active: true },
     select: { id: true, name: true },
+    orderBy: { name: "asc" },
   });
 
-  const [assignedGroups, completedCounts, deliveredInPeriod] = await Promise.all([
-    prisma.jobCard.groupBy({
-      by: ["assignedTechnicianId", "status"],
-      _count: { id: true },
-      where: { assignedTechnicianId: { not: null } },
-    }),
-    prisma.jobCard.groupBy({
-      by: ["completedByTechnicianId"],
-      _count: { id: true },
-      where: {
-        completedByTechnicianId: { not: null },
-        readyAt: { gte: start, lt: end },
-      },
-    }),
-    prisma.jobCard.findMany({
-      where: {
-        completedByTechnicianId: { not: null },
-        status: "Delivered",
-        deliveredAt: { gte: start, lt: end },
-      },
-      select: { completedByTechnicianId: true, serviceAmount: true },
-    }),
-  ]);
+  const [receivedInPeriod, assignedByStatus, completedInPeriod, deliveredInPeriod] =
+    await Promise.all([
+      prisma.jobCard.groupBy({
+        by: ["assignedTechnicianId"],
+        _count: { id: true },
+        where: {
+          assignedTechnicianId: { not: null },
+          receivedAt: { gte: start, lt: end },
+        },
+      }),
+      prisma.jobCard.groupBy({
+        by: ["assignedTechnicianId", "status"],
+        _count: { id: true },
+        where: { assignedTechnicianId: { not: null } },
+      }),
+      prisma.jobCard.groupBy({
+        by: ["completedByTechnicianId"],
+        _count: { id: true },
+        where: {
+          completedByTechnicianId: { not: null },
+          readyAt: { gte: start, lt: end },
+        },
+      }),
+      prisma.jobCard.findMany({
+        where: {
+          completedByTechnicianId: { not: null },
+          status: "Delivered",
+          deliveredAt: { gte: start, lt: end },
+        },
+        select: { completedByTechnicianId: true, serviceAmount: true },
+      }),
+    ]);
 
-  const assignedWorkloadReports = technicians.map((tech) => {
-    const rows = assignedGroups.filter((g) => g.assignedTechnicianId === tech.id);
-    const countFor = (status: string) =>
-      rows.find((r) => r.status === status)?._count.id ?? 0;
-    const totalAssigned = rows.reduce((sum, r) => sum + r._count.id, 0);
+  const receivedById = Object.fromEntries(
+    receivedInPeriod.map((row) => [row.assignedTechnicianId!, row._count.id])
+  );
 
-    return {
-      name: tech.name,
-      totalAssigned,
-      pending: countFor("Pending"),
-      ready: countFor("Ready"),
-      waitingForApproval: countFor("WaitingForCustomerApproval"),
-      return: countFor("Return"),
-    };
-  });
-
-  const completedCountById = Object.fromEntries(
-    completedCounts.map((row) => [row.completedByTechnicianId!, row._count.id])
+  const completedById = Object.fromEntries(
+    completedInPeriod.map((row) => [row.completedByTechnicianId!, row._count.id])
   );
 
   const deliveredByTech = new Map<string, { serviceAmount: number | null }[]>();
@@ -134,21 +132,73 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
     deliveredByTech.set(techId, list);
   }
 
-  const completedByReports = technicians.map((tech) => {
-    const delivered = deliveredByTech.get(tech.id) ?? [];
-    const { lowest, highest } = billRange(delivered);
+  const technicianReports = technicians.map((tech) => {
+    const statusRows = assignedByStatus.filter(
+      (row) => row.assignedTechnicianId === tech.id
+    );
+    const countAssigned = (status: string) =>
+      statusRows.find((row) => row.status === status)?._count.id ?? 0;
+
+    const pending = countAssigned("Pending");
+    const waitingForApproval = countAssigned("WaitingForCustomerApproval");
+    const ready = countAssigned("Ready");
+    const returnCount = countAssigned("Return");
+    const deliveredAssigned = countAssigned("Delivered");
+    const activeAssigned = pending + waitingForApproval + ready + returnCount;
+    const received = receivedById[tech.id] ?? 0;
+    const completed = completedById[tech.id] ?? 0;
+    const deliveredJobs = deliveredByTech.get(tech.id) ?? [];
+    const delivered = deliveredJobs.length;
+    const totalCollection = sumAmount(deliveredJobs);
+    const { lowest, highest } = billRange(deliveredJobs);
 
     return {
+      id: tech.id,
       name: tech.name,
-      totalCompletedJobs: completedCountById[tech.id] ?? 0,
-      totalCollection: sumAmount(delivered),
-      averageBill: avgAmount(delivered),
+      received,
+      pending,
+      waitingForApproval,
+      ready,
+      return: returnCount,
+      activeAssigned,
+      deliveredAssigned,
+      completed,
+      delivered,
+      totalCollection,
+      averageBill: avgAmount(deliveredJobs),
       lowestBill: lowest,
       highestBill: highest,
+      completionRate:
+        received > 0 ? Math.round((delivered / received) * 100) : null,
     };
   });
 
-  return { period, assignedWorkloadReports, completedByReports };
+  const totals = technicianReports.reduce(
+    (acc, row) => ({
+      received: acc.received + row.received,
+      pending: acc.pending + row.pending,
+      waitingForApproval: acc.waitingForApproval + row.waitingForApproval,
+      ready: acc.ready + row.ready,
+      return: acc.return + row.return,
+      activeAssigned: acc.activeAssigned + row.activeAssigned,
+      completed: acc.completed + row.completed,
+      delivered: acc.delivered + row.delivered,
+      totalCollection: acc.totalCollection + row.totalCollection,
+    }),
+    {
+      received: 0,
+      pending: 0,
+      waitingForApproval: 0,
+      ready: 0,
+      return: 0,
+      activeAssigned: 0,
+      completed: 0,
+      delivered: 0,
+      totalCollection: 0,
+    }
+  );
+
+  return { period, technicianReports, totals };
 }
 
 async function buildBrandApplianceReports(period: ReportPeriod, start: Date, end: Date) {

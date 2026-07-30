@@ -1,15 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { APP_NAME } from "@/lib/constants";
 import { useAuth } from "./AuthProvider";
 
-function getNavLinks(role: "reception" | "technician" | "admin" | null) {
+type NavLink = { href: string; label: string };
+
+function getNavLinks(role: "reception" | "technician" | "admin" | null): NavLink[] {
   if (role === "technician") {
     return [
       { href: "/jobs/pending", label: "Home" },
       { href: "/jobs/delivery", label: "Delivery" },
+      { href: "/jobs/search", label: "Search" },
+    ];
+  }
+
+  if (role === "admin") {
+    return [
+      { href: "/dashboard", label: "Home" },
+      { href: "/admin?tab=reports", label: "Reports" },
+      { href: "/admin", label: "Settings" },
+      { href: "/jobs/pending", label: "Pending" },
       { href: "/jobs/search", label: "Search" },
     ];
   }
@@ -37,21 +49,29 @@ function getUserSubtitle(
 
 export function AppNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { role, technicianName, refreshAuth } = useAuth();
 
   const links = getNavLinks(role);
   const homeHref = role === "technician" ? "/jobs/pending" : "/dashboard";
   const userSubtitle = getUserSubtitle(role, technicianName);
+  const adminTab = searchParams.get("tab");
 
   function isLinkActive(href: string) {
+    if (href.startsWith("/admin")) {
+      if (pathname !== "/admin") return false;
+      if (href.includes("tab=reports")) return adminTab === "reports";
+      return adminTab !== "reports";
+    }
     if (href === "/dashboard") {
       return pathname === "/dashboard";
     }
     if (href === "/jobs/pending" && role === "technician") {
       return pathname === "/jobs/pending";
     }
-    return pathname === href || pathname.startsWith(`${href}/`);
+    const baseHref = href.split("?")[0];
+    return pathname === baseHref || pathname.startsWith(`${baseHref}/`);
   }
 
   async function logout() {

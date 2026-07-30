@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { ensureLookupOption, type LookupCategory } from "@/lib/lookups";
+import { ensureApplianceLookupOption } from "@/lib/lookups";
 import { enqueueReceiptPrint } from "@/lib/print-queue";
 import { dispatchNotificationEventAsync } from "@/lib/notifications/events";
 import {
@@ -20,13 +20,10 @@ export type PostJobCreatePayload = {
 export async function runPostJobCreateTasks(payload: PostJobCreatePayload) {
   const { jobId, jobNumber, applianceType, brand, complaint, photos } = payload;
 
-  const lookupTasks = (
-    [
-      ["appliance", applianceType],
-      ["brand", brand],
-      ["complaint", complaint],
-    ] as const
-  ).map(([category, value]) => ensureLookupOption(category as LookupCategory, value));
+  const lookupTasks = [
+    ensureApplianceLookupOption("brand", brand, applianceType),
+    ensureApplianceLookupOption("complaint", complaint, applianceType),
+  ];
 
   console.log("[Notification] Job created", { jobId, jobNumber });
 

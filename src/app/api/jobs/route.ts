@@ -7,7 +7,11 @@ import {
   normalizeJobNumberQuery,
   detectSearchQueryType,
 } from "@/lib/jobs";
-import { getDefaultTechnicianForAppliance } from "@/lib/lookups";
+import {
+  getDefaultTechnicianForAppliance,
+  isBrandAllowedForAppliance,
+  isComplaintAllowedForAppliance,
+} from "@/lib/lookups";
 import { runPostJobCreateTasks } from "@/lib/job-create-background";
 import { canCreateJob } from "@/lib/auth";
 import { getSession } from "@/lib/session";
@@ -133,6 +137,25 @@ export async function POST(request: NextRequest) {
   if (!applianceType || !brand?.trim() || !complaint) {
     return NextResponse.json(
       { error: "Product type, brand, and complaint required" },
+      { status: 400 }
+    );
+  }
+
+  const [brandAllowed, complaintAllowed] = await Promise.all([
+    isBrandAllowedForAppliance(applianceType, brand),
+    isComplaintAllowedForAppliance(applianceType, complaint),
+  ]);
+
+  if (!brandAllowed) {
+    return NextResponse.json(
+      { error: "Selected brand is not allowed for this product type" },
+      { status: 400 }
+    );
+  }
+
+  if (!complaintAllowed) {
+    return NextResponse.json(
+      { error: "Selected complaint is not allowed for this product type" },
       { status: 400 }
     );
   }

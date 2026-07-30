@@ -10,6 +10,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { WhatsAppAutomationTab } from "./WhatsAppAutomationTab";
+import { reportJobsHref } from "@/lib/report-links";
+import type { ReportPeriod } from "@/lib/reports";
 
 type Technician = {
   id: string;
@@ -31,6 +33,15 @@ type Customer = {
   allowWhatsappNotifications: boolean;
   jobCount: number;
 };
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) {
+    throw new Error(data.error ?? `Request failed (${res.status})`);
+  }
+  return data;
+}
 
 export default function AdminContent() {
   const router = useRouter();
@@ -112,6 +123,7 @@ export default function AdminContent() {
 function TechniciansTab() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [mappings, setMappings] = useState<Mapping[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [newTechName, setNewTechName] = useState("");
   const [selectedAppliance, setSelectedAppliance] = useState("");
   const [selectedTechId, setSelectedTechId] = useState("");
@@ -119,12 +131,19 @@ function TechniciansTab() {
   const [editName, setEditName] = useState("");
 
   const load = useCallback(async () => {
-    const [techRes, mapRes] = await Promise.all([
-      fetch("/api/technicians"),
-      fetch("/api/appliance-technicians"),
-    ]);
-    setTechnicians(await techRes.json());
-    setMappings(await mapRes.json());
+    setLoadError("");
+    try {
+      const [techs, maps] = await Promise.all([
+        fetchJson<Technician[]>("/api/technicians"),
+        fetchJson<Mapping[]>("/api/appliance-technicians"),
+      ]);
+      setTechnicians(techs);
+      setMappings(maps);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : "Failed to load technicians"
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -186,6 +205,11 @@ function TechniciansTab() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {loadError ? (
+        <p className="col-span-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {loadError}
+        </p>
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Technicians</CardTitle>
@@ -332,18 +356,58 @@ type ApplianceOption = { id: string; value: string };
 
 function AppliancesTab() {
   const [appliances, setAppliances] = useState<ApplianceOption[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [selectedAppliance, setSelectedAppliance] = useState("");
+  const [brands, setBrands] = useState<string[]>([]);
+  const [complaints, setComplaints] = useState<string[]>([]);
+  const [lookupError, setLookupError] = useState("");
+  const [newBrand, setNewBrand] = useState("");
+  const [newComplaint, setNewComplaint] = useState("");
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/lookups?category=appliance");
-    setAppliances(await res.json());
+    setLoadError("");
+    try {
+      setAppliances(
+        await fetchJson<ApplianceOption[]>("/api/lookups?category=appliance")
+      );
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : "Failed to load appliances"
+      );
+    }
+  }, []);
+
+  const loadProductLookups = useCallback(async (applianceType: string) => {
+    if (!applianceType) {
+      setBrands([]);
+      setComplaints([]);
+      return;
+    }
+
+    setLookupError("");
+    try {
+      const data = await fetchJson<{ brands: string[]; complaints: string[] }>(
+        `/api/appliance-lookups?applianceType=${encodeURIComponent(applianceType)}`
+      );
+      setBrands(data.brands ?? []);
+      setComplaints(data.complaints ?? []);
+    } catch (error) {
+      setLookupError(
+        error instanceof Error ? error.message : "Failed to load brands and complaints"
+      );
+    }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadProductLookups(selectedAppliance);
+  }, [selectedAppliance, loadProductLookups]);
 
   async function addAppliance() {
     if (!newName.trim()) return;
@@ -356,7 +420,7 @@ function AppliancesTab() {
       setNewName("");
       load();
     } else {
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       alert(data.error ?? "Add failed");
     }
   }
@@ -369,10 +433,14 @@ function AppliancesTab() {
       body: JSON.stringify({ value: editName.trim() }),
     });
     if (res.ok) {
+      const previousName = appliances.find((a) => a.id === id)?.value;
       setEditingId(null);
       load();
+      if (previousName && selectedAppliance === previousName) {
+        setSelectedAppliance(editName.trim());
+      }
     } else {
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       alert(data.error ?? "Update failed");
     }
   }
@@ -381,107 +449,304 @@ function AppliancesTab() {
     if (!confirm(`Remove appliance "${name}" from the list?`)) return;
     const res = await fetch(`/api/lookups/${id}`, { method: "DELETE" });
     if (res.ok) {
+      if (selectedAppliance === name) {
+        setSelectedAppliance("");
+      }
       load();
     } else {
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       alert(data.error ?? "Delete failed");
     }
   }
 
+  async function addLookup(category: "brand" | "complaint", value: string) {
+    if (!selectedAppliance || !value.trim()) return;
+
+    const res = await fetch("/api/appliance-lookups", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        applianceType: selectedAppliance,
+        category,
+        value: value.trim(),
+      }),
+    });
+
+    if (res.ok) {
+      if (category === "brand") setNewBrand("");
+      else setNewComplaint("");
+      loadProductLookups(selectedAppliance);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? "Add failed");
+    }
+  }
+
+  async function removeLookup(category: "brand" | "complaint", value: string) {
+    if (!selectedAppliance) return;
+
+    const res = await fetch("/api/appliance-lookups", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        applianceType: selectedAppliance,
+        category,
+        value,
+      }),
+    });
+
+    if (res.ok) {
+      loadProductLookups(selectedAppliance);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? "Remove failed");
+    }
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Appliance Types</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-xs text-slate-500">
-          Edit or remove appliance types shown when creating jobs. Renaming updates
-          existing jobs and technician routing.
+    <div className="grid gap-6 lg:grid-cols-2">
+      {loadError ? (
+        <p className="col-span-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {loadError}
         </p>
-        <ul className="space-y-2">
-          {appliances.map((a) => (
-            <li
-              key={a.id}
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
-            >
-              {editingId === a.id ? (
-                <div className="flex gap-2">
-                  <input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="flex-1 rounded border border-slate-300 px-2 py-1"
-                    autoFocus
-                  />
-                  <button
-                    onClick={() => saveEdit(a.id)}
-                    className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="rounded border px-2 py-1 text-xs"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-slate-900">{a.value}</span>
-                  <div className="flex shrink-0 gap-1">
+      ) : null}
+      <Card>
+        <CardHeader>
+          <CardTitle>Product Types</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-slate-500">
+            Edit or remove product types shown when creating jobs. Renaming updates
+            existing jobs, technician routing, and brand/complaint mappings.
+          </p>
+          <ul className="space-y-2">
+            {appliances.map((a) => (
+              <li
+                key={a.id}
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+              >
+                {editingId === a.id ? (
+                  <div className="flex gap-2">
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="flex-1 rounded border border-slate-300 px-2 py-1"
+                      autoFocus
+                    />
                     <button
-                      onClick={() => {
-                        setEditingId(a.id);
-                        setEditName(a.value);
-                      }}
-                      className="rounded px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                      onClick={() => saveEdit(a.id)}
+                      className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
                     >
-                      Edit
+                      Save
                     </button>
                     <button
-                      onClick={() => deleteAppliance(a.id, a.value)}
-                      className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      onClick={() => setEditingId(null)}
+                      className="rounded border px-2 py-1 text-xs"
                     >
-                      Delete
+                      Cancel
                     </button>
                   </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAppliance(a.value)}
+                      className={`text-left font-medium ${
+                        selectedAppliance === a.value
+                          ? "text-emerald-700"
+                          : "text-slate-900"
+                      }`}
+                    >
+                      {a.value}
+                    </button>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        onClick={() => {
+                          setEditingId(a.id);
+                          setEditName(a.value);
+                        }}
+                        className="rounded px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => deleteAppliance(a.id, a.value)}
+                        className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+            {appliances.length === 0 && (
+              <p className="text-sm text-slate-500">No product types yet.</p>
+            )}
+          </ul>
+          <div className="flex gap-2 border-t border-slate-100 pt-3">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New product type"
+              className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addAppliance();
+                }
+              }}
+            />
+            <button
+              onClick={addAppliance}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              Add
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Brands & Complaints</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-slate-500">
+            Select a product type on the left, then assign which brands and complaints
+            appear when creating jobs for that product.
+          </p>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Product Type
+            </label>
+            <select
+              value={selectedAppliance}
+              onChange={(e) => setSelectedAppliance(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Select product type</option>
+              {appliances.map((a) => (
+                <option key={a.id} value={a.value}>
+                  {a.value}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {lookupError ? (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {lookupError}
+            </p>
+          ) : null}
+
+          {selectedAppliance ? (
+            <>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Brands</p>
+                <ul className="space-y-1">
+                  {brands.map((brand) => (
+                    <li
+                      key={brand}
+                      className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      <span>{brand}</span>
+                      <button
+                        onClick={() => removeLookup("brand", brand)}
+                        className="text-xs font-medium text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                  {brands.length === 0 && (
+                    <p className="text-sm text-slate-500">No brands assigned yet.</p>
+                  )}
+                </ul>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newBrand}
+                    onChange={(e) => setNewBrand(e.target.value)}
+                    placeholder="Add brand"
+                    className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addLookup("brand", newBrand);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => addLookup("brand", newBrand)}
+                    className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Add
+                  </button>
                 </div>
-              )}
-            </li>
-          ))}
-          {appliances.length === 0 && (
-            <p className="text-sm text-slate-500">No appliances yet.</p>
+              </div>
+
+              <div className="space-y-2 border-t border-slate-100 pt-4">
+                <p className="text-sm font-medium text-slate-700">Complaints</p>
+                <ul className="space-y-1">
+                  {complaints.map((complaint) => (
+                    <li
+                      key={complaint}
+                      className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      <span>{complaint}</span>
+                      <button
+                        onClick={() => removeLookup("complaint", complaint)}
+                        className="text-xs font-medium text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                  {complaints.length === 0 && (
+                    <p className="text-sm text-slate-500">No complaints assigned yet.</p>
+                  )}
+                </ul>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newComplaint}
+                    onChange={(e) => setNewComplaint(e.target.value)}
+                    placeholder="Add complaint"
+                    className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addLookup("complaint", newComplaint);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => addLookup("complaint", newComplaint)}
+                    className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">
+              Select a product type to manage its brands and complaints.
+            </p>
           )}
-        </ul>
-        <div className="flex gap-2 border-t border-slate-100 pt-3">
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="New appliance type"
-            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addAppliance();
-              }
-            }}
-          />
-          <button
-            onClick={addAppliance}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            Add
-          </button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
 function CustomersTab() {
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [editing, setEditing] = useState<Customer | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -491,9 +756,15 @@ function CustomersTab() {
   });
 
   const search = useCallback(async (q: string) => {
-    const params = q ? `?q=${encodeURIComponent(q)}` : "";
-    const res = await fetch(`/api/customers${params}`);
-    setCustomers(await res.json());
+    setLoadError("");
+    try {
+      const params = q ? `?q=${encodeURIComponent(q)}` : "";
+      setCustomers(await fetchJson<Customer[]>(`/api/customers${params}`));
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : "Failed to load customers"
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -532,6 +803,11 @@ function CustomersTab() {
         <CardTitle>Customers</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {loadError ? (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {loadError}
+          </p>
+        ) : null}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -644,6 +920,31 @@ function CustomersTab() {
   );
 }
 
+function ReportLinkCard({
+  href,
+  className = "bg-white",
+  label,
+  value,
+  subtext,
+}: {
+  href: string;
+  className?: string;
+  label: string;
+  value: string | number;
+  subtext?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`block rounded-md p-3 transition-colors hover:opacity-90 ${className}`}
+    >
+      <p className="text-slate-600">{label}</p>
+      <p className="text-xl font-bold">{value}</p>
+      {subtext ? <p className="text-xs text-slate-500">{subtext}</p> : null}
+    </Link>
+  );
+}
+
 function ReportsTab() {
   const [period, setPeriod] = useState<"today" | "month" | "year">("today");
   const [reportSection, setReportSection] = useState<
@@ -660,22 +961,34 @@ function ReportsTab() {
     readyNotDelivered: { count: number; totalAmount: number };
   } | null>(null);
   const [technicianData, setTechnicianData] = useState<{
-    assignedWorkloadReports: Array<{
+    technicianReports: Array<{
+      id: string;
       name: string;
-      totalAssigned: number;
+      received: number;
       pending: number;
-      ready: number;
       waitingForApproval: number;
+      ready: number;
       return: number;
-    }>;
-    completedByReports: Array<{
-      name: string;
-      totalCompletedJobs: number;
+      activeAssigned: number;
+      completed: number;
+      delivered: number;
       totalCollection: number;
       averageBill: number;
       lowestBill: number;
       highestBill: number;
+      completionRate: number | null;
     }>;
+    totals: {
+      received: number;
+      pending: number;
+      waitingForApproval: number;
+      ready: number;
+      return: number;
+      activeAssigned: number;
+      completed: number;
+      delivered: number;
+      totalCollection: number;
+    };
   } | null>(null);
   const [brandData, setBrandData] = useState<{
     applianceReports: Array<{
@@ -755,6 +1068,8 @@ function ReportsTab() {
   const formatRs = (n: number) =>
     `Rs.${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
+  const periodFilter = period as ReportPeriod;
+
   return (
     <div className="space-y-6">
       <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
@@ -819,21 +1134,24 @@ function ReportsTab() {
               value={
                 period === "today" ? summary.summary.jobsReceived : summary.summary.totalJobs
               }
+              href={reportJobsHref({ receivedPeriod: periodFilter })}
             />
             <StatCard
               label={period === "today" ? "Delivered Today" : "Jobs Delivered"}
               value={summary.summary.jobsDelivered}
+              href={reportJobsHref({ deliveredPeriod: periodFilter })}
             />
             <StatCard
               label="Total Collection"
               value={formatRs(summary.summary.totalCollection)}
               valueClassName="text-emerald-800"
+              href={reportJobsHref({ deliveredPeriod: periodFilter })}
             />
             <StatCard
               label="Ready (Not Delivered)"
               value={summary.readyNotDelivered.count}
               subtext={formatRs(summary.readyNotDelivered.totalAmount)}
-              href="/jobs/search?status=Ready"
+              href={reportJobsHref({ status: "Ready" })}
             />
           </div>
 
@@ -842,24 +1160,24 @@ function ReportsTab() {
               <CardTitle className="text-base">Pending Aging</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3 text-sm">
-              <div className="rounded-md bg-amber-50 p-3">
-                <p className="text-slate-600">&gt; 3 days</p>
-                <p className="text-xl font-bold text-amber-800">
-                  {summary.pendingAging.over3Days}
-                </p>
-              </div>
-              <div className="rounded-md bg-orange-50 p-3">
-                <p className="text-slate-600">&gt; 7 days</p>
-                <p className="text-xl font-bold text-orange-800">
-                  {summary.pendingAging.over7Days}
-                </p>
-              </div>
-              <div className="rounded-md bg-red-50 p-3">
-                <p className="text-slate-600">&gt; 15 days</p>
-                <p className="text-xl font-bold text-red-800">
-                  {summary.pendingAging.over15Days}
-                </p>
-              </div>
+              <ReportLinkCard
+                href={reportJobsHref({ status: "Pending", minAgeDays: 3 })}
+                className="bg-amber-50"
+                label="> 3 days"
+                value={summary.pendingAging.over3Days}
+              />
+              <ReportLinkCard
+                href={reportJobsHref({ status: "Pending", minAgeDays: 7 })}
+                className="bg-orange-50"
+                label="> 7 days"
+                value={summary.pendingAging.over7Days}
+              />
+              <ReportLinkCard
+                href={reportJobsHref({ status: "Pending", minAgeDays: 15 })}
+                className="bg-red-50"
+                label="> 15 days"
+                value={summary.pendingAging.over15Days}
+              />
             </CardContent>
           </Card>
         </>
@@ -871,69 +1189,215 @@ function ReportsTab() {
             <p className="text-center text-slate-500">Loading technician reports…</p>
           ) : (
             <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard
+                  label="Received (Assigned)"
+                  value={technicianData.totals.received}
+                  subtext={
+                    period === "today"
+                      ? "Jobs received today"
+                      : period === "month"
+                        ? "This month"
+                        : "This year"
+                  }
+                  href={reportJobsHref({ receivedPeriod: periodFilter })}
+                />
+                <StatCard
+                  label="Active Pipeline"
+                  value={technicianData.totals.activeAssigned}
+                  subtext={`${technicianData.totals.pending} pending · ${technicianData.totals.ready} ready`}
+                  href={reportJobsHref({ active: true })}
+                />
+                <StatCard
+                  label="Completed (Ready)"
+                  value={technicianData.totals.completed}
+                  subtext="Marked ready in period"
+                  href={reportJobsHref({ readyPeriod: periodFilter })}
+                />
+                <StatCard
+                  label="Delivered Collection"
+                  value={formatRs(technicianData.totals.totalCollection)}
+                  subtext={`${technicianData.totals.delivered} delivered`}
+                  valueClassName="text-emerald-800"
+                  href={reportJobsHref({ deliveredPeriod: periodFilter })}
+                />
+              </div>
+
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Assigned Workload</CardTitle>
+                  <CardTitle className="text-base">Technician-wise Analysis</CardTitle>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <p className="mb-3 text-xs text-slate-500">
+                    Received and completed/delivered counts use the selected period.
+                    Pending, ready, and return show current assigned backlog.
+                  </p>
+                  <table className="w-full min-w-[960px] text-sm">
                     <thead>
                       <tr className="border-b text-left text-slate-500">
-                        <th className="pb-2 pr-4">Technician</th>
-                        <th className="pb-2 pr-4">Assigned</th>
-                        <th className="pb-2 pr-4">Pending</th>
-                        <th className="pb-2 pr-4">Ready</th>
-                        <th className="pb-2 pr-4">Waiting</th>
-                        <th className="pb-2">Return</th>
+                        <th className="pb-2 pr-3">Technician</th>
+                        <th className="pb-2 pr-3">Received</th>
+                        <th className="pb-2 pr-3">Pending</th>
+                        <th className="pb-2 pr-3">Waiting</th>
+                        <th className="pb-2 pr-3">Ready</th>
+                        <th className="pb-2 pr-3">Return</th>
+                        <th className="pb-2 pr-3">Active</th>
+                        <th className="pb-2 pr-3">Completed</th>
+                        <th className="pb-2 pr-3">Delivered</th>
+                        <th className="pb-2 pr-3">Collection</th>
+                        <th className="pb-2 pr-3">Avg Bill</th>
+                        <th className="pb-2 pr-3">Rate</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {technicianData.assignedWorkloadReports.map((row) => (
-                        <tr key={row.name} className="border-b border-slate-100">
-                          <td className="py-2 pr-4 font-medium">{row.name}</td>
-                          <td className="py-2 pr-4">{row.totalAssigned}</td>
-                          <td className="py-2 pr-4">{row.pending}</td>
-                          <td className="py-2 pr-4">{row.ready}</td>
-                          <td className="py-2 pr-4">{row.waitingForApproval}</td>
-                          <td className="py-2">{row.return}</td>
+                      {technicianData.technicianReports.map((row) => (
+                        <tr key={row.id} className="border-b border-slate-100">
+                          <td className="py-2 pr-3 font-medium text-slate-900">
+                            {row.name}
+                          </td>
+                          <td className="py-2 pr-3">{row.received}</td>
+                          <td className="py-2 pr-3 text-amber-700">{row.pending}</td>
+                          <td className="py-2 pr-3">{row.waitingForApproval}</td>
+                          <td className="py-2 pr-3 text-emerald-700">{row.ready}</td>
+                          <td className="py-2 pr-3 text-orange-700">{row.return}</td>
+                          <td className="py-2 pr-3 font-medium">{row.activeAssigned}</td>
+                          <td className="py-2 pr-3">{row.completed}</td>
+                          <td className="py-2 pr-3">{row.delivered}</td>
+                          <td className="py-2 pr-3">{formatRs(row.totalCollection)}</td>
+                          <td className="py-2 pr-3">
+                            {row.delivered > 0
+                              ? formatRs(Math.round(row.averageBill))
+                              : "—"}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {row.completionRate != null ? `${row.completionRate}%` : "—"}
+                          </td>
                         </tr>
                       ))}
+                      <tr className="bg-slate-50 font-semibold text-slate-900">
+                        <td className="py-2 pr-3">All technicians</td>
+                        <td className="py-2 pr-3">{technicianData.totals.received}</td>
+                        <td className="py-2 pr-3">{technicianData.totals.pending}</td>
+                        <td className="py-2 pr-3">
+                          {technicianData.totals.waitingForApproval}
+                        </td>
+                        <td className="py-2 pr-3">{technicianData.totals.ready}</td>
+                        <td className="py-2 pr-3">{technicianData.totals.return}</td>
+                        <td className="py-2 pr-3">{technicianData.totals.activeAssigned}</td>
+                        <td className="py-2 pr-3">{technicianData.totals.completed}</td>
+                        <td className="py-2 pr-3">{technicianData.totals.delivered}</td>
+                        <td className="py-2 pr-3">
+                          {formatRs(technicianData.totals.totalCollection)}
+                        </td>
+                        <td className="py-2 pr-3">—</td>
+                        <td className="py-2 pr-3">—</td>
+                      </tr>
                     </tbody>
                   </table>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Completed By Technician</CardTitle>
-                </CardHeader>
-                <CardContent className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-slate-500">
-                        <th className="pb-2 pr-4">Technician</th>
-                        <th className="pb-2 pr-4">Completed</th>
-                        <th className="pb-2 pr-4">Collection</th>
-                        <th className="pb-2 pr-4">Avg Bill</th>
-                        <th className="pb-2 pr-4">Lowest</th>
-                        <th className="pb-2">Highest</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {technicianData.completedByReports.map((row) => (
-                        <tr key={row.name} className="border-b border-slate-100">
-                          <td className="py-2 pr-4 font-medium">{row.name}</td>
-                          <td className="py-2 pr-4">{row.totalCompletedJobs}</td>
-                          <td className="py-2 pr-4">{formatRs(row.totalCollection)}</td>
-                          <td className="py-2 pr-4">{formatRs(Math.round(row.averageBill))}</td>
-                          <td className="py-2 pr-4">{formatRs(row.lowestBill)}</td>
-                          <td className="py-2">{formatRs(row.highestBill)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {technicianData.technicianReports.map((row) => (
+                  <Card key={row.id}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">
+                        <Link
+                          href={reportJobsHref({
+                            technicianId: row.id,
+                            active: true,
+                          })}
+                          className="hover:text-emerald-700"
+                        >
+                          {row.name}
+                        </Link>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-2 gap-3 text-sm">
+                      <ReportLinkCard
+                        href={reportJobsHref({
+                          technicianId: row.id,
+                          receivedPeriod: periodFilter,
+                        })}
+                        className="bg-slate-50"
+                        label="Received"
+                        value={row.received}
+                      />
+                      <ReportLinkCard
+                        href={reportJobsHref({
+                          technicianId: row.id,
+                          status: "Pending",
+                        })}
+                        className="bg-amber-50"
+                        label="Pending"
+                        value={row.pending}
+                      />
+                      <ReportLinkCard
+                        href={reportJobsHref({
+                          technicianId: row.id,
+                          status: "Ready",
+                        })}
+                        className="bg-emerald-50"
+                        label="Ready"
+                        value={row.ready}
+                      />
+                      <ReportLinkCard
+                        href={reportJobsHref({
+                          completedByTechnicianId: row.id,
+                          readyPeriod: periodFilter,
+                        })}
+                        className="bg-blue-50"
+                        label="Completed"
+                        value={row.completed}
+                      />
+                      <ReportLinkCard
+                        href={reportJobsHref({
+                          completedByTechnicianId: row.id,
+                          deliveredPeriod: periodFilter,
+                        })}
+                        className="bg-violet-50"
+                        label="Delivered"
+                        value={row.delivered}
+                      />
+                      <ReportLinkCard
+                        href={reportJobsHref({
+                          completedByTechnicianId: row.id,
+                          deliveredPeriod: periodFilter,
+                        })}
+                        className="bg-green-50"
+                        label="Collection"
+                        value={formatRs(row.totalCollection)}
+                      />
+                      <div className="col-span-2 grid grid-cols-2 gap-2">
+                        <ReportLinkCard
+                          href={reportJobsHref({
+                            technicianId: row.id,
+                            status: "WaitingForCustomerApproval",
+                          })}
+                          className="border border-slate-200 bg-white"
+                          label="Waiting"
+                          value={row.waitingForApproval}
+                        />
+                        <ReportLinkCard
+                          href={reportJobsHref({
+                            technicianId: row.id,
+                            status: "Return",
+                          })}
+                          className="border border-slate-200 bg-white"
+                          label="Return"
+                          value={row.return}
+                        />
+                      </div>
+                      {row.completionRate != null && row.delivered > 0 ? (
+                        <p className="col-span-2 text-xs text-slate-600">
+                          Delivery rate {row.completionRate}% · Bills{" "}
+                          {formatRs(row.lowestBill)} – {formatRs(row.highestBill)}
+                        </p>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </>
           )}
         </>
@@ -951,13 +1415,17 @@ function ReportsTab() {
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   {brandData.applianceReports.map((row) => (
-                    <div key={row.applianceType} className="flex justify-between gap-2">
+                    <Link
+                      key={row.applianceType}
+                      href={reportJobsHref({ applianceType: row.applianceType })}
+                      className="flex justify-between gap-2 rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
+                    >
                       <span className="text-slate-700">{row.applianceType}</span>
                       <span className="text-right text-slate-900">
                         {row.totalJobs} jobs · {formatRs(row.totalCollection)} · avg{" "}
                         {formatRs(Math.round(row.averageServiceAmount))}
                       </span>
-                    </div>
+                    </Link>
                   ))}
                 </CardContent>
               </Card>
@@ -968,12 +1436,16 @@ function ReportsTab() {
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   {brandData.brandReports.map((row) => (
-                    <div key={row.brand} className="flex justify-between">
+                    <Link
+                      key={row.brand}
+                      href={reportJobsHref({ brand: row.brand })}
+                      className="flex justify-between rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
+                    >
                       <span className="text-slate-700">{row.brand}</span>
                       <span className="font-semibold text-slate-900">
                         {row.totalJobs} · {formatRs(row.totalCollection)}
                       </span>
-                    </div>
+                    </Link>
                   ))}
                 </CardContent>
               </Card>

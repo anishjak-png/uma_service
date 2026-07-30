@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  addApplianceBrand,
+  addApplianceComplaint,
   ensureLookupOption,
   getLookupOptions,
   getLookupOptionsBatch,
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const category = body.category as LookupCategory;
   const value = body.value as string;
+  const applianceType = body.applianceType as string | undefined;
 
   if (!category || !VALID_CATEGORIES.has(category)) {
     return NextResponse.json({ error: "Valid category required" }, { status: 400 });
@@ -48,5 +51,20 @@ export async function POST(request: NextRequest) {
   }
 
   const option = await ensureLookupOption(category, value);
+
+  if (
+    applianceType?.trim() &&
+    (category === "brand" || category === "complaint")
+  ) {
+    const mappingResult =
+      category === "brand"
+        ? await addApplianceBrand(applianceType, value)
+        : await addApplianceComplaint(applianceType, value);
+
+    if ("error" in mappingResult) {
+      return NextResponse.json({ error: mappingResult.error }, { status: 400 });
+    }
+  }
+
   return NextResponse.json(option, { status: 201 });
 }

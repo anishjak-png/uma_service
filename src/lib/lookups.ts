@@ -42,6 +42,145 @@ export async function ensureLookupOption(category: LookupCategory, value: string
   });
 }
 
+export async function getBrandsForAppliance(applianceType: string) {
+  const rows = await prisma.applianceBrand.findMany({
+    where: { applianceType },
+    orderBy: { brand: "asc" },
+  });
+  return rows.map((row) => row.brand);
+}
+
+export async function getComplaintsForAppliance(applianceType: string) {
+  const rows = await prisma.applianceComplaint.findMany({
+    where: { applianceType },
+    orderBy: { complaint: "asc" },
+  });
+  return rows.map((row) => row.complaint);
+}
+
+export async function getApplianceLookups(applianceType: string) {
+  const [brands, complaints] = await Promise.all([
+    getBrandsForAppliance(applianceType),
+    getComplaintsForAppliance(applianceType),
+  ]);
+  return { brands, complaints };
+}
+
+export async function addApplianceBrand(applianceType: string, brand: string) {
+  const trimmed = brand.trim();
+  if (!trimmed) return { error: "Brand required" as const };
+
+  await ensureLookupOption("brand", trimmed);
+
+  const mapping = await prisma.applianceBrand.upsert({
+    where: { applianceType_brand: { applianceType, brand: trimmed } },
+    update: {},
+    create: { applianceType, brand: trimmed },
+  });
+
+  return { mapping };
+}
+
+export async function addApplianceComplaint(
+  applianceType: string,
+  complaint: string
+) {
+  const trimmed = complaint.trim();
+  if (!trimmed) return { error: "Complaint required" as const };
+
+  await ensureLookupOption("complaint", trimmed);
+
+  const mapping = await prisma.applianceComplaint.upsert({
+    where: {
+      applianceType_complaint: { applianceType, complaint: trimmed },
+    },
+    update: {},
+    create: { applianceType, complaint: trimmed },
+  });
+
+  return { mapping };
+}
+
+export async function removeApplianceBrand(applianceType: string, brand: string) {
+  const trimmed = brand.trim();
+  if (!trimmed) return { error: "Brand required" as const };
+
+  await prisma.applianceBrand.deleteMany({
+    where: { applianceType, brand: trimmed },
+  });
+
+  return { ok: true as const };
+}
+
+export async function removeApplianceComplaint(
+  applianceType: string,
+  complaint: string
+) {
+  const trimmed = complaint.trim();
+  if (!trimmed) return { error: "Complaint required" as const };
+
+  await prisma.applianceComplaint.deleteMany({
+    where: { applianceType, complaint: trimmed },
+  });
+
+  return { ok: true as const };
+}
+
+export async function ensureApplianceLookupOption(
+  category: "brand" | "complaint",
+  value: string,
+  applianceType: string
+) {
+  const trimmed = value.trim();
+  if (!trimmed || !applianceType.trim()) return null;
+
+  await ensureLookupOption(category, trimmed);
+
+  if (category === "brand") {
+    await prisma.applianceBrand.upsert({
+      where: {
+        applianceType_brand: { applianceType, brand: trimmed },
+      },
+      update: {},
+      create: { applianceType, brand: trimmed },
+    });
+  } else {
+    await prisma.applianceComplaint.upsert({
+      where: {
+        applianceType_complaint: { applianceType, complaint: trimmed },
+      },
+      update: {},
+      create: { applianceType, complaint: trimmed },
+    });
+  }
+
+  return trimmed;
+}
+
+export async function isBrandAllowedForAppliance(
+  applianceType: string,
+  brand: string
+) {
+  const mapping = await prisma.applianceBrand.findUnique({
+    where: {
+      applianceType_brand: { applianceType, brand: brand.trim() },
+    },
+  });
+  return Boolean(mapping);
+}
+
+export async function isComplaintAllowedForAppliance(
+  applianceType: string,
+  complaint: string
+) {
+  const mapping = await prisma.applianceComplaint.findUnique({
+    where: {
+      applianceType_complaint: { applianceType, complaint: complaint.trim() },
+    },
+  });
+  return Boolean(mapping);
+}
+
 export async function getDefaultTechnicianForAppliance(applianceType: string) {
   const mapping = await prisma.applianceTechnician.findUnique({
     where: { applianceType },
@@ -88,6 +227,16 @@ export async function updateApplianceOption(id: string, newValue: string) {
       });
     }
 
+    await tx.applianceBrand.updateMany({
+      where: { applianceType: oldValue },
+      data: { applianceType: trimmed },
+    });
+
+    await tx.applianceComplaint.updateMany({
+      where: { applianceType: oldValue },
+      data: { applianceType: trimmed },
+    });
+
     return tx.lookupOption.update({
       where: { id },
       data: { value: trimmed },
@@ -118,6 +267,12 @@ export async function deleteApplianceOption(id: string) {
 
   await prisma.$transaction([
     prisma.applianceTechnician.deleteMany({
+      where: { applianceType: existing.value },
+    }),
+    prisma.applianceBrand.deleteMany({
+      where: { applianceType: existing.value },
+    }),
+    prisma.applianceComplaint.deleteMany({
       where: { applianceType: existing.value },
     }),
     prisma.lookupOption.delete({ where: { id } }),

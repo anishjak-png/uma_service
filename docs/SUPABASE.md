@@ -95,3 +95,25 @@ npm run db:studio
 | `db:push` fails with pooler | Use `DIRECT_URL` on port 5432 |
 | App works locally, fails on Vercel | Add all env vars in Vercel dashboard, redeploy |
 | Empty technicians dropdown | Run `npm run db:seed` |
+
+## Security — Supabase “RLS disabled” / “sensitive data exposed” alerts
+
+Supabase hosts PostgreSQL and also exposes tables through a **public REST API** (`/rest/v1/...`) when Row Level Security (RLS) is off.
+
+**This app does not use that API for data.** All reads/writes go through **Next.js API routes + Prisma** using `DATABASE_URL` on the server. Staff auth is PIN/session based in the app — not Supabase Auth.
+
+If Supabase emails you about public tables (e.g. `Customer`, `NotificationSettings` with tokens/mobile numbers), fix it once:
+
+1. Supabase Dashboard → **SQL Editor** → New query
+2. Paste and run [`prisma/enable-rls.sql`](../prisma/enable-rls.sql)
+3. Dashboard → **Database → Security Advisor** → confirm issues are cleared
+
+That script:
+
+- Enables RLS on all `public` tables (blocks anon/authenticated API access)
+- Revokes table grants from `anon` and `authenticated` roles
+- Does **not** break Prisma, `db:push`, seed, or Table Editor (postgres role bypasses RLS)
+
+**Storage:** Product photos use the **service role key** server-side only (`SUPABASE_SERVICE_ROLE_KEY`). Never expose that key or the database password in the browser. Keep `NEXT_PUBLIC_*` vars limited to shop name, phone, app URL.
+
+**Do not** put the Supabase **anon** key in this app for database access — it is not needed for uma-service.

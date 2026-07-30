@@ -11,6 +11,9 @@ interface CreatableSelectProps {
   onChange: (value: string) => void;
   required?: boolean;
   placeholder?: string;
+  disabled?: boolean;
+  /** Links new brand/complaint values to a product type when adding from job form. */
+  applianceType?: string;
   onSelect?: (value: string) => void;
   /** When provided, skips the per-category lookup fetch. */
   options?: string[];
@@ -24,6 +27,8 @@ export function CreatableSelect({
   onChange,
   required,
   placeholder = "Select or add new",
+  disabled = false,
+  applianceType,
   onSelect,
   options: externalOptions,
   onOptionsChange,
@@ -65,7 +70,14 @@ export function CreatableSelect({
     await fetch("/api/lookups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category, value: trimmed }),
+      body: JSON.stringify({
+        category,
+        value: trimmed,
+        applianceType:
+          applianceType && (category === "brand" || category === "complaint")
+            ? applianceType
+            : undefined,
+      }),
     });
 
     if (onOptionsChange) {
@@ -105,8 +117,9 @@ export function CreatableSelect({
 
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className="flex h-10 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+        className="flex h-10 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
       >
         <span className={value ? "text-slate-900" : "text-slate-400"}>
           {value || placeholder}
@@ -114,7 +127,7 @@ export function CreatableSelect({
         <span className="text-slate-400">▾</span>
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-2">
             <input

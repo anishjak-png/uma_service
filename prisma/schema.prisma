@@ -53,6 +53,24 @@ model ApplianceTechnician {
   technician    Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
 }
 
+model ApplianceBrand {
+  id            String @id @default(cuid())
+  applianceType String
+  brand         String
+
+  @@unique([applianceType, brand])
+  @@index([applianceType])
+}
+
+model ApplianceComplaint {
+  id            String @id @default(cuid())
+  applianceType String
+  complaint     String
+
+  @@unique([applianceType, complaint])
+  @@index([applianceType])
+}
+
 model JobCard {
   id                   String          @id @default(cuid())
   jobNumber            String          @unique
