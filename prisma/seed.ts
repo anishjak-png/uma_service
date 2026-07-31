@@ -64,6 +64,16 @@ const COMPLAINTS = [
 
 const TECHNICIANS = ["Jeeva", "Kaja", "Prasanth", "Sameer", "Vijay"];
 
+const OUTSOURCE_PARTNERS = ["Hanuram", "Perumal", "Balaji"];
+
+const APPLIANCE_ACCESSORIES: Record<string, string[]> = {
+  Mixie: ["Jars", "Lid", "Coupler"],
+  "Gas Stove": ["Burner", "Pan support", "Knobs"],
+  Cooker: ["Gasket", "Weight", "Inner pot"],
+  "Sewing Machine": ["Bobbin case", "Foot pedal", "Power cord"],
+  "Table Top Grinder": ["Grinding stone", "Lid", "Lock clip"],
+};
+
 const APPLIANCE_ROUTING: Record<string, string> = {
   Mixie: "Prasanth",
   "Gas Stove": "Jeeva",
@@ -157,6 +167,9 @@ async function pruneRemovedAppliances() {
     await prisma.applianceComplaint.deleteMany({
       where: { applianceType: option.value },
     });
+    await prisma.applianceAccessory.deleteMany({
+      where: { applianceType: option.value },
+    });
     await prisma.lookupOption.delete({ where: { id: option.id } });
   }
 
@@ -174,6 +187,11 @@ async function pruneRemovedAppliances() {
   for (const row of await prisma.applianceComplaint.findMany()) {
     if (!allowed.has(row.applianceType)) {
       await prisma.applianceComplaint.delete({ where: { id: row.id } });
+    }
+  }
+  for (const row of await prisma.applianceAccessory.findMany()) {
+    if (!allowed.has(row.applianceType)) {
+      await prisma.applianceAccessory.delete({ where: { id: row.id } });
     }
   }
 }
@@ -203,10 +221,22 @@ async function seedApplianceLookups() {
     }
   }
 
-  // Remove brand/complaint mappings for allowed types that were redefined
+  for (const [applianceType, accessories] of Object.entries(APPLIANCE_ACCESSORIES)) {
+    if (!allowed.has(applianceType)) continue;
+    for (const accessory of accessories) {
+      await prisma.applianceAccessory.upsert({
+        where: { applianceType_accessory: { applianceType, accessory } },
+        update: {},
+        create: { applianceType, accessory },
+      });
+    }
+  }
+
+  // Remove brand/complaint/accessory mappings for allowed types that were redefined
   for (const applianceType of allowed) {
     const allowedBrands = new Set(APPLIANCE_BRANDS[applianceType] ?? []);
     const allowedComplaints = new Set(APPLIANCE_COMPLAINTS[applianceType] ?? []);
+    const allowedAccessories = new Set(APPLIANCE_ACCESSORIES[applianceType] ?? []);
 
     const brandRows = await prisma.applianceBrand.findMany({
       where: { applianceType },
@@ -225,6 +255,15 @@ async function seedApplianceLookups() {
         await prisma.applianceComplaint.delete({ where: { id: row.id } });
       }
     }
+
+    const accessoryRows = await prisma.applianceAccessory.findMany({
+      where: { applianceType },
+    });
+    for (const row of accessoryRows) {
+      if (!allowedAccessories.has(row.accessory)) {
+        await prisma.applianceAccessory.delete({ where: { id: row.id } });
+      }
+    }
   }
 }
 
@@ -237,6 +276,14 @@ async function main() {
 
   for (const name of TECHNICIANS) {
     await prisma.technician.upsert({
+      where: { name },
+      update: { active: true },
+      create: { name },
+    });
+  }
+
+  for (const name of OUTSOURCE_PARTNERS) {
+    await prisma.outsourcePartner.upsert({
       where: { name },
       update: { active: true },
       create: { name },

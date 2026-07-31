@@ -6,12 +6,15 @@ import {
   normalizeMobile,
   normalizeJobNumberQuery,
   detectSearchQueryType,
+  staffActorName,
 } from "@/lib/jobs";
 import {
   getDefaultTechnicianForAppliance,
   isBrandAllowedForAppliance,
   isComplaintAllowedForAppliance,
+  validateAccessoriesForAppliance,
 } from "@/lib/lookups";
+import { serializeAccessories, parseAccessories } from "@/lib/jobs";
 import { runPostJobCreateTasks } from "@/lib/job-create-background";
 import { canCreateJob } from "@/lib/auth";
 import { getSession } from "@/lib/session";
@@ -100,6 +103,7 @@ export async function POST(request: NextRequest) {
   let complaint = "";
   let physicalCondition = "";
   let photoFiles: File[] = [];
+  let accessoriesList: string[] = [];
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -110,6 +114,10 @@ export async function POST(request: NextRequest) {
     model = String(form.get("model") ?? "");
     complaint = String(form.get("complaint") ?? "");
     physicalCondition = String(form.get("physicalCondition") ?? "");
+    const accessoriesRaw = form.get("accessories");
+    if (typeof accessoriesRaw === "string" && accessoriesRaw.trim()) {
+      accessoriesList = parseAccessories(accessoriesRaw);
+    }
     photoFiles = form
       .getAll("photos")
       .filter((f): f is File => f instanceof File && f.size > 0)
@@ -123,6 +131,11 @@ export async function POST(request: NextRequest) {
     model = body.model ?? "";
     complaint = body.complaint ?? "";
     physicalCondition = body.physicalCondition ?? "";
+    if (Array.isArray(body.accessories)) {
+      accessoriesList = body.accessories.filter(
+        (a: unknown) => typeof a === "string"
+      );
+    }
   }
 
   const normalizedMobile = normalizeMobile(mobile);
@@ -160,12 +173,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (accessoriesList.length > 0) {
+    const accessoriesValid = await validateAccessoriesForAppliance(
+      applianceType,
+      accessoriesList
+    );
+    if (!accessoriesValid) {
+      return NextResponse.json(
+        { error: "One or more accessories are not allowed for this product type" },
+        { status: 400 }
+      );
+    }
+  }
+
   if (photoFiles.length > 0 && !isSupabaseStorageConfigured()) {
     return NextResponse.json(
       { error: "Photo upload is not configured. Set Supabase Storage env vars." },
       { status: 503 }
     );
   }
+
+  const creatorName = staffActorName(session);
 
   const [customer, jobNumber, defaultTech] = await Promise.all([
     prisma.customer.upsert({
@@ -189,16 +217,17 @@ export async function POST(request: NextRequest) {
       model: model?.trim() || null,
       complaint,
       physicalCondition: physicalCondition?.trim() || null,
+      accessories: serializeAccessories(accessoriesList),
       productPhotos: null,
       assignedTechnicianId: defaultTech?.id ?? null,
-      createdBy: session.role ?? "reception",
+      createdBy: creatorName,
       statusHistory: {
         create: {
           status: "Pending",
-          changedBy: session.role ?? "reception",
+          changedBy: creatorName,
           note: defaultTech
-            ? `Job card created — assigned to ${defaultTech.name}`
-            : "Job card created",
+            ? `Job card created by ${creatorName} — assigned to ${defaultTech.name}`
+            : `Job card created by ${creatorName}`,
         },
       },
     },

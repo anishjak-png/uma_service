@@ -14,7 +14,7 @@ import {
   type StaffRole,
 } from "@/lib/constants";
 import { formatCurrency } from "@/lib/currency";
-import { daysSince, formatMobileDisplay, formatStatusChangedBy, formatDateTime, parseProductPhotos, normalizeMobile } from "@/lib/jobs";
+import { daysSince, formatMobileDisplay, formatStatusChangedBy, formatDateTime, parseProductPhotos, parseAccessories, normalizeMobile } from "@/lib/jobs";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -35,9 +35,14 @@ type JobDetail = {
   receivedAt: string;
   readyAt?: string | null;
   deliveredAt?: string | null;
+  createdBy?: string | null;
+  accessories?: string | null;
+  outsourcedAt?: string | null;
   whatsappNotificationsOverride?: boolean | null;
   assignedTechnician?: { id: string; name: string } | null;
   completedByTechnician?: { id: string; name: string } | null;
+  outsourcedTo?: { id: string; name: string } | null;
+  completedByOutsource?: { id: string; name: string } | null;
   customer: {
     id: string;
     mobile: string;
@@ -70,6 +75,12 @@ function mergeJobPatch(prev: JobDetail, patch: JobPatchResponse): JobDetail {
       fields.completedByTechnician !== undefined
         ? fields.completedByTechnician
         : prev.completedByTechnician,
+    outsourcedTo:
+      fields.outsourcedTo !== undefined ? fields.outsourcedTo : prev.outsourcedTo,
+    completedByOutsource:
+      fields.completedByOutsource !== undefined
+        ? fields.completedByOutsource
+        : prev.completedByOutsource,
     statusHistory: statusHistoryEntry
       ? [statusHistoryEntry, ...prev.statusHistory]
       : prev.statusHistory,
@@ -124,6 +135,15 @@ export default function JobDetailPage() {
   const [technicians, setTechnicians] = useState<Array<{ id: string; name: string }>>([]);
   const [editCompletedById, setEditCompletedById] = useState("");
   const [showCompletedByEdit, setShowCompletedByEdit] = useState(false);
+  const [outsourcePartners, setOutsourcePartners] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [showOutsourceForm, setShowOutsourceForm] = useState(false);
+  const [selectedPartnerId, setSelectedPartnerId] = useState("");
+  const [accessoryOptions, setAccessoryOptions] = useState<string[]>([]);
+  const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
+  const [otherAccessory, setOtherAccessory] = useState("");
+  const [editingAccessories, setEditingAccessories] = useState(false);
 
   const fetchJob = useCallback(async () => {
     const jobRes = await fetch(`/api/jobs/${id}`);
@@ -139,8 +159,30 @@ export default function JobDetailPage() {
     setReadyAmount(data.serviceAmount != null ? String(data.serviceAmount) : "");
     setEditAmount(data.serviceAmount != null ? String(data.serviceAmount) : "");
     setEditCompletedById(data.completedByTechnician?.id ?? "");
+    setSelectedAccessories(parseAccessories(data.accessories));
     setLoading(false);
   }, [id, router]);
+
+  useEffect(() => {
+    if (role === "reception" || role === "admin" || role === "technician") {
+      fetch("/api/outsource-partners")
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data)) setOutsourcePartners(data);
+        });
+    }
+  }, [role]);
+
+  useEffect(() => {
+    if (!job?.applianceType) return;
+    fetch(
+      `/api/appliance-lookups?applianceType=${encodeURIComponent(job.applianceType)}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.accessories) setAccessoryOptions(data.accessories);
+      });
+  }, [job?.applianceType]);
 
   useEffect(() => {
     if (role === "reception" || role === "admin") {
@@ -169,6 +211,11 @@ export default function JobDetailPage() {
       if (data.remarks !== undefined) setRemarks(data.remarks ?? "");
       setShowReadyForm(false);
       setShowAmountEdit(false);
+      setShowOutsourceForm(false);
+      if (data.accessories !== undefined) {
+        setSelectedAccessories(parseAccessories(data.accessories));
+        setEditingAccessories(false);
+      }
     } else {
       const data = await res.json();
       alert(data.error ?? "Update failed");
@@ -177,6 +224,11 @@ export default function JobDetailPage() {
   }
 
   async function handleStatusChange(status: string) {
+    if (status === "Outsourced") {
+      setSelectedPartnerId("");
+      setShowOutsourceForm(true);
+      return;
+    }
     if (status === "Ready") {
       if (job?.readyAt && role !== "admin") {
         await updateJob({ status: "Ready" });
@@ -193,6 +245,27 @@ export default function JobDetailPage() {
     await updateJob({ status });
   }
 
+  async function confirmOutsource() {
+    if (!selectedPartnerId) {
+      alert("Select an outsource partner");
+      return;
+    }
+    await updateJob({ status: "Outsourced", outsourcedToId: selectedPartnerId });
+  }
+
+  function toggleAccessory(name: string) {
+    setSelectedAccessories((prev) =>
+      prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]
+    );
+  }
+
+  async function saveAccessories() {
+    const list = [...selectedAccessories];
+    const other = otherAccessory.trim();
+    if (other) list.push(`Other: ${other}`);
+    await updateJob({ accessories: list });
+  }
+
   async function confirmReady() {
     const amount = Number(readyAmount);
     if (Number.isNaN(amount) || amount < 0) {
@@ -205,7 +278,8 @@ export default function JobDetailPage() {
     };
     if (
       (role === "reception" || role === "admin") &&
-      !job?.completedByTechnician
+      !job?.completedByTechnician &&
+      job?.status !== "Outsourced"
     ) {
       if (!readyCompletedById) {
         alert("Select the technician who completed the repair");
@@ -274,6 +348,11 @@ export default function JobDetailPage() {
               ({daysSince(new Date(job.receivedAt))} days ago)
             </span>
           </p>
+          {job.createdBy && (
+            <p className="mt-1 text-sm text-slate-500">
+              Created by {formatStatusChangedBy(job.createdBy)}
+            </p>
+          )}
         </div>
 
         <DetailSection title="Customer Details">
@@ -296,6 +375,92 @@ export default function JobDetailPage() {
           <DetailRow label="Brand">{job.brand}</DetailRow>
           <DetailRow label="Model">{job.model ?? "—"}</DetailRow>
         </DetailSection>
+
+        {(parseAccessories(job.accessories).length > 0 || (!isLocked && isStaff)) && (
+          <DetailSection title="Accessories Received">
+            {!editingAccessories ? (
+              <div className="space-y-2">
+                {parseAccessories(job.accessories).length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {parseAccessories(job.accessories).map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-base text-slate-500">None recorded</p>
+                )}
+                {!isLocked && isStaff && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAccessories(parseAccessories(job.accessories));
+                      setOtherAccessory("");
+                      setEditingAccessories(true);
+                    }}
+                    className="text-sm font-medium text-emerald-700 hover:underline"
+                  >
+                    Edit accessories
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {accessoryOptions.length > 0 ? (
+                  <div className="space-y-2">
+                    {accessoryOptions.map((item) => (
+                      <label
+                        key={item}
+                        className="flex items-center gap-2 text-sm text-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAccessories.includes(item)}
+                          onChange={() => toggleAccessory(item)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        {item}
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    No accessories configured for this product type.
+                  </p>
+                )}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Other</label>
+                  <input
+                    type="text"
+                    value={otherAccessory}
+                    onChange={(e) => setOtherAccessory(e.target.value)}
+                    placeholder="Optional — other item received"
+                    className="flex h-10 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveAccessories}
+                    disabled={saving}
+                    className="flex-1 rounded-md bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingAccessories(false)}
+                    className="flex-1 rounded-md border border-slate-300 py-2 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </DetailSection>
+        )}
 
         <DetailSection title="Complaint">
           <p className="text-base leading-relaxed text-slate-800">{job.complaint}</p>
@@ -323,17 +488,36 @@ export default function JobDetailPage() {
           )}
         </DetailSection>
 
-        <DetailSection title="Assigned Technician">
-          <p className="text-base text-slate-900">
-            {job.assignedTechnician?.name ?? "—"}
-          </p>
-        </DetailSection>
+        {job.status === "Outsourced" && job.outsourcedTo ? (
+          <DetailSection title="Outsource Partner">
+            <p className="text-base font-medium text-purple-800">
+              With {job.outsourcedTo.name}
+            </p>
+            {job.outsourcedAt && (
+              <p className="text-sm text-slate-500">
+                Sent {formatDateTime(job.outsourcedAt)}
+              </p>
+            )}
+          </DetailSection>
+        ) : (
+          <DetailSection title="Assigned Technician">
+            <p className="text-base text-slate-900">
+              {job.assignedTechnician?.name ?? "—"}
+            </p>
+          </DetailSection>
+        )}
 
-        <DetailSection title="Completed By Technician">
-          <p className="text-base text-slate-900">
-            {job.completedByTechnician?.name ?? "—"}
-          </p>
-        </DetailSection>
+        {job.completedByOutsource ? (
+          <DetailSection title="Completed By (Outsource)">
+            <p className="text-base text-slate-900">{job.completedByOutsource.name}</p>
+          </DetailSection>
+        ) : (
+          <DetailSection title="Completed By Technician">
+            <p className="text-base text-slate-900">
+              {job.completedByTechnician?.name ?? "—"}
+            </p>
+          </DetailSection>
+        )}
 
         {showFinancials && (
           <DetailSection title="Service Amount">
@@ -497,7 +681,7 @@ export default function JobDetailPage() {
               className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               autoFocus
             />
-            {isStaff && !job.completedByTechnician && (
+            {isStaff && !job.completedByTechnician && job.status !== "Outsourced" && (
               <div>
                 <label className="mb-1 block text-sm font-medium text-emerald-900">
                   Completed by (required)
@@ -526,6 +710,42 @@ export default function JobDetailPage() {
               </button>
               <button
                 onClick={() => setShowReadyForm(false)}
+                className="flex-1 rounded-md border border-slate-300 bg-white py-2.5 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showOutsourceForm && (
+          <div className="rounded-lg border border-purple-200 bg-purple-50 p-5 shadow-sm space-y-3">
+            <h3 className="font-semibold text-purple-900">Send to Outsource</h3>
+            <p className="text-sm text-purple-800">
+              Job will leave the in-house technician queue.
+            </p>
+            <select
+              value={selectedPartnerId}
+              onChange={(e) => setSelectedPartnerId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+            >
+              <option value="">Select partner</option>
+              {outsourcePartners.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={confirmOutsource}
+                disabled={saving}
+                className="flex-1 rounded-md bg-purple-600 py-2.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                Send
+              </button>
+              <button
+                onClick={() => setShowOutsourceForm(false)}
                 className="flex-1 rounded-md border border-slate-300 bg-white py-2.5 text-sm"
               >
                 Cancel
@@ -565,7 +785,7 @@ export default function JobDetailPage() {
         )}
 
         <DetailSection title="Actions">
-          {!showReadyForm && selectableStatuses.length > 0 && (
+          {!showReadyForm && !showOutsourceForm && selectableStatuses.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm font-medium text-slate-600">Change Status</p>
               <div className="grid grid-cols-2 gap-2">

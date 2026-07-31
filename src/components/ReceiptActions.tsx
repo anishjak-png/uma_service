@@ -15,6 +15,7 @@ interface JobForReceipt {
   brand?: string | null;
   model?: string | null;
   complaint: string;
+  accessories?: string | null;
   customer: { mobile: string; name?: string | null };
 }
 

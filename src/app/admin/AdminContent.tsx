@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { WhatsAppAutomationTab } from "./WhatsAppAutomationTab";
 import { StaffTab } from "./StaffTab";
 import { DevicesTab } from "./DevicesTab";
+import { OutsourceTab } from "./OutsourceTab";
 import { reportJobsHref } from "@/lib/report-links";
 import type { ReportPeriod } from "@/lib/reports";
 
@@ -55,6 +56,7 @@ export default function AdminContent() {
     tabFromUrl === "reports" ||
     tabFromUrl === "devices" ||
     tabFromUrl === "staff" ||
+    tabFromUrl === "outsource" ||
     tabFromUrl === "technicians" ||
     tabFromUrl === "appliances" ||
     tabFromUrl === "customers" ||
@@ -69,6 +71,7 @@ export default function AdminContent() {
     if (
       requested === "devices" ||
       requested === "staff" ||
+      requested === "outsource" ||
       requested === "technicians" ||
       requested === "appliances" ||
       requested === "customers" ||
@@ -118,6 +121,7 @@ export default function AdminContent() {
       )}
       {tab === "devices" && <DevicesTab />}
       {tab === "staff" && <StaffTab />}
+      {tab === "outsource" && <OutsourceTab />}
       {tab === "technicians" && <TechniciansTab />}
       {tab === "appliances" && <AppliancesTab />}
       {tab === "customers" && <CustomersTab />}
@@ -370,9 +374,11 @@ function AppliancesTab() {
   const [selectedAppliance, setSelectedAppliance] = useState("");
   const [brands, setBrands] = useState<string[]>([]);
   const [complaints, setComplaints] = useState<string[]>([]);
+  const [accessories, setAccessories] = useState<string[]>([]);
   const [lookupError, setLookupError] = useState("");
   const [newBrand, setNewBrand] = useState("");
   const [newComplaint, setNewComplaint] = useState("");
+  const [newAccessory, setNewAccessory] = useState("");
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -391,16 +397,22 @@ function AppliancesTab() {
     if (!applianceType) {
       setBrands([]);
       setComplaints([]);
+      setAccessories([]);
       return;
     }
 
     setLookupError("");
     try {
-      const data = await fetchJson<{ brands: string[]; complaints: string[] }>(
+      const data = await fetchJson<{
+        brands: string[];
+        complaints: string[];
+        accessories: string[];
+      }>(
         `/api/appliance-lookups?applianceType=${encodeURIComponent(applianceType)}`
       );
       setBrands(data.brands ?? []);
       setComplaints(data.complaints ?? []);
+      setAccessories(data.accessories ?? []);
     } catch (error) {
       setLookupError(
         error instanceof Error ? error.message : "Failed to load brands and complaints"
@@ -466,7 +478,10 @@ function AppliancesTab() {
     }
   }
 
-  async function addLookup(category: "brand" | "complaint", value: string) {
+  async function addLookup(
+    category: "brand" | "complaint" | "accessory",
+    value: string
+  ) {
     if (!selectedAppliance || !value.trim()) return;
 
     const res = await fetch("/api/appliance-lookups", {
@@ -481,7 +496,8 @@ function AppliancesTab() {
 
     if (res.ok) {
       if (category === "brand") setNewBrand("");
-      else setNewComplaint("");
+      else if (category === "complaint") setNewComplaint("");
+      else setNewAccessory("");
       loadProductLookups(selectedAppliance);
     } else {
       const data = await res.json().catch(() => ({}));
@@ -489,7 +505,10 @@ function AppliancesTab() {
     }
   }
 
-  async function removeLookup(category: "brand" | "complaint", value: string) {
+  async function removeLookup(
+    category: "brand" | "complaint" | "accessory",
+    value: string
+  ) {
     if (!selectedAppliance) return;
 
     const res = await fetch("/api/appliance-lookups", {
@@ -617,12 +636,12 @@ function AppliancesTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Brands & Complaints</CardTitle>
+          <CardTitle>Brands, Complaints & Accessories</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-slate-500">
-            Select a product type on the left, then assign which brands and complaints
-            appear when creating jobs for that product.
+            Select a product type on the left, then assign brands, complaints, and
+            accessories shown when creating jobs for that product.
           </p>
 
           <div>
@@ -688,6 +707,50 @@ function AppliancesTab() {
                   />
                   <button
                     onClick={() => addLookup("brand", newBrand)}
+                    className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 border-t border-slate-100 pt-4">
+                <p className="text-sm font-medium text-slate-700">Accessories</p>
+                <ul className="space-y-1">
+                  {accessories.map((accessory) => (
+                    <li
+                      key={accessory}
+                      className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      <span>{accessory}</span>
+                      <button
+                        onClick={() => removeLookup("accessory", accessory)}
+                        className="text-xs font-medium text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                  {accessories.length === 0 && (
+                    <p className="text-sm text-slate-500">No accessories assigned yet.</p>
+                  )}
+                </ul>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newAccessory}
+                    onChange={(e) => setNewAccessory(e.target.value)}
+                    placeholder="Add accessory (e.g. Jars)"
+                    className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addLookup("accessory", newAccessory);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => addLookup("accessory", newAccessory)}
                     className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                   >
                     Add

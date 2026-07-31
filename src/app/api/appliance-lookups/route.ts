@@ -3,9 +3,11 @@ import { requireAdmin } from "@/lib/auth";
 import {
   addApplianceBrand,
   addApplianceComplaint,
+  addApplianceAccessory,
   getApplianceLookups,
   removeApplianceBrand,
   removeApplianceComplaint,
+  removeApplianceAccessory,
 } from "@/lib/lookups";
 
 function formatLookupApiError(error: unknown): string {
@@ -59,7 +61,7 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const applianceType = String(body.applianceType ?? "").trim();
-    const category = body.category as "brand" | "complaint";
+    const category = body.category as "brand" | "complaint" | "accessory";
     const value = String(body.value ?? "").trim();
 
     if (!applianceType || !value) {
@@ -69,9 +71,9 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (category !== "brand" && category !== "complaint") {
+    if (category !== "brand" && category !== "complaint" && category !== "accessory") {
       return NextResponse.json(
-        { error: "category must be brand or complaint" },
+        { error: "category must be brand, complaint, or accessory" },
         { status: 400 }
       );
     }
@@ -79,7 +81,9 @@ export async function PUT(request: NextRequest) {
     const result =
       category === "brand"
         ? await addApplianceBrand(applianceType, value)
-        : await addApplianceComplaint(applianceType, value);
+        : category === "complaint"
+          ? await addApplianceComplaint(applianceType, value)
+          : await addApplianceAccessory(applianceType, value);
 
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: 400 });
@@ -104,7 +108,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
     const applianceType = String(body.applianceType ?? "").trim();
-    const category = body.category as "brand" | "complaint";
+    const category = body.category as "brand" | "complaint" | "accessory";
     const value = String(body.value ?? "").trim();
 
     if (!applianceType || !value) {
@@ -114,9 +118,9 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    if (category !== "brand" && category !== "complaint") {
+    if (category !== "brand" && category !== "complaint" && category !== "accessory") {
       return NextResponse.json(
-        { error: "category must be brand or complaint" },
+        { error: "category must be brand, complaint, or accessory" },
         { status: 400 }
       );
     }
@@ -124,7 +128,9 @@ export async function DELETE(request: NextRequest) {
     const result =
       category === "brand"
         ? await removeApplianceBrand(applianceType, value)
-        : await removeApplianceComplaint(applianceType, value);
+        : category === "complaint"
+          ? await removeApplianceComplaint(applianceType, value)
+          : await removeApplianceAccessory(applianceType, value);
 
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: 400 });

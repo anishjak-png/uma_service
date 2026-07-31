@@ -4,6 +4,7 @@ export function JobStatusBadge({ status }: { status: string }) {
   const statusColors: Record<string, string> = {
     Pending: "bg-blue-100 text-blue-800",
     WaitingForCustomerApproval: "bg-amber-100 text-amber-800",
+    Outsourced: "bg-purple-100 text-purple-800",
     Ready: "bg-green-100 text-green-800",
     Return: "bg-orange-100 text-orange-800",
     Delivered: "bg-slate-100 text-slate-700",
@@ -12,6 +13,7 @@ export function JobStatusBadge({ status }: { status: string }) {
   const labels: Record<string, string> = {
     Pending: "Pending",
     WaitingForCustomerApproval: "Waiting for Approval",
+    Outsourced: "Outsourced",
     Ready: "Ready",
     Return: "Return",
     Delivered: "Delivered",

@@ -1,4 +1,5 @@
 import { buildEscPosReceipt, buildReceiptData } from "../../src/lib/thermal";
+import { parseAccessories } from "../../src/lib/jobs";
 import type { BridgeConfig } from "./config";
 import type { JobCardRow } from "./types";
 
@@ -21,6 +22,9 @@ export function buildReceiptBuffer(jobCard: JobCardRow, config: BridgeConfig): B
     brand: jobCard.brand,
     model: jobCard.model,
     complaint: jobCard.complaint,
+    accessories: parseAccessories(jobCard.accessories).length
+      ? jobCard.accessories
+      : null,
   });
 
   return buildEscPosReceipt(receiptData);

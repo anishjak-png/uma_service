@@ -32,6 +32,7 @@ export default function NewJobPage() {
     appliance: [],
     brand: [],
     complaint: [],
+    accessory: [],
   });
   const [mobile, setMobile] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -43,6 +44,8 @@ export default function NewJobPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [assignedTechName, setAssignedTechName] = useState<string | null>(null);
+  const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
+  const [otherAccessory, setOtherAccessory] = useState("");
   const [lookupsLoading, setLookupsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -61,7 +64,7 @@ export default function NewJobPage() {
 
   const loadProductLookups = useCallback(async (appliance: string) => {
     if (!appliance) {
-      setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [] }));
+      setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [], accessory: [] }));
       return;
     }
 
@@ -72,13 +75,14 @@ export default function NewJobPage() {
       );
       const data = await res.json();
       if (!res.ok) {
-        setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [] }));
+        setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [], accessory: [] }));
         return;
       }
       setLookupOptions((prev) => ({
         ...prev,
         brand: data.brands ?? [],
         complaint: data.complaints ?? [],
+        accessory: data.accessories ?? [],
       }));
     } finally {
       setLookupsLoading(false);
@@ -122,7 +126,15 @@ export default function NewJobPage() {
   async function handleApplianceSelect(appliance: string) {
     setBrand("");
     setComplaint("");
+    setSelectedAccessories([]);
+    setOtherAccessory("");
     await Promise.all([fetchAssignedTech(appliance), loadProductLookups(appliance)]);
+  }
+
+  function toggleAccessory(name: string) {
+    setSelectedAccessories((prev) =>
+      prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]
+    );
   }
 
   function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -160,7 +172,9 @@ export default function NewJobPage() {
     setPhotoFiles([]);
     setPhotoPreviews([]);
     setAssignedTechName(null);
-    setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [] }));
+    setSelectedAccessories([]);
+    setOtherAccessory("");
+    setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [], accessory: [] }));
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -176,6 +190,12 @@ export default function NewJobPage() {
     formData.set("model", model);
     formData.set("complaint", complaint);
     formData.set("physicalCondition", physicalCondition);
+    const accessoriesList = [...selectedAccessories];
+    const other = otherAccessory.trim();
+    if (other) accessoriesList.push(`Other: ${other}`);
+    if (accessoriesList.length > 0) {
+      formData.set("accessories", JSON.stringify(accessoriesList));
+    }
     photoFiles.forEach((file) => formData.append("photos", file));
 
     const res = await fetch("/api/jobs", {
@@ -364,6 +384,35 @@ export default function NewJobPage() {
               required
               placeholder="Select or add complaint"
             />
+
+            {applianceType && lookupOptions.accessory.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Accessories received</p>
+                <div className="space-y-2 rounded-md border border-slate-200 p-3">
+                  {lookupOptions.accessory.map((item) => (
+                    <label
+                      key={item}
+                      className="flex items-center gap-2 text-sm text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAccessories.includes(item)}
+                        onChange={() => toggleAccessory(item)}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      {item}
+                    </label>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={otherAccessory}
+                  onChange={(e) => setOtherAccessory(e.target.value)}
+                  placeholder="Other accessory (optional)"
+                  className="flex h-10 w-full rounded-md border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Physical Condition</label>

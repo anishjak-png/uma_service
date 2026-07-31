@@ -82,6 +82,21 @@ export function parseProductPhotos(raw: string | null | undefined): string[] {
   }
 }
 
+export function parseAccessories(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((a) => typeof a === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function serializeAccessories(items: string[]): string | null {
+  const cleaned = items.map((a) => a.trim()).filter(Boolean);
+  return cleaned.length > 0 ? JSON.stringify(cleaned) : null;
+}
+
 export async function recordStatusChange(
   jobCardId: string,
   status: JobStatus,
@@ -93,7 +108,7 @@ export async function recordStatusChange(
   });
 }
 
-/** Display label for status history "Updated By" (reception → Reception, etc.). */
+/** Display label for status history "Updated By" (staff name or role). */
 export function formatStatusChangedBy(changedBy: string | null | undefined): string {
   if (!changedBy) return "System";
   const lower = changedBy.toLowerCase();
@@ -101,4 +116,19 @@ export function formatStatusChangedBy(changedBy: string | null | undefined): str
   if (lower === "admin") return "Admin";
   if (lower === "technician") return "Technician";
   return changedBy;
+}
+
+export function staffActorName(session: {
+  staffName?: string;
+  technicianName?: string;
+  role?: string;
+}): string {
+  if (session.staffName?.trim()) return session.staffName.trim();
+  if (session.role === "technician" && session.technicianName) {
+    return session.technicianName;
+  }
+  if (session.role === "reception") return "Reception";
+  if (session.role === "admin") return "Admin";
+  if (session.role === "technician") return "Technician";
+  return "Staff";
 }

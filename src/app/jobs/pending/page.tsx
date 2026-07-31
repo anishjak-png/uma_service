@@ -21,6 +21,7 @@ type PendingJob = {
   complaint: string;
   receivedAt: string;
   assignedTechnician?: { name: string } | null;
+  outsourcedTo?: { name: string } | null;
   customer: { mobile: string; name?: string | null };
 };
 
@@ -36,6 +37,7 @@ export default function PendingJobsPage() {
   const [jobs, setJobs] = useState<PendingJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<TechnicianStats | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "Outsourced">("all");
   const { scope, setScope, ready: scopeReady } = useTechnicianJobScope();
 
   const loadJobs = useCallback(async (jobScope: "my" | "all", userRole: string | null) => {
@@ -71,9 +73,43 @@ export default function PendingJobsPage() {
   }, [scope, scopeReady, role, roleLoaded, loadJobs]);
 
   const isTechnician = role === "technician";
+  const outsourcedCount = jobs.filter((j) => j.status === "Outsourced").length;
+  const displayedJobs =
+    !isTechnician && statusFilter === "Outsourced"
+      ? jobs.filter((j) => j.status === "Outsourced")
+      : jobs;
 
   return (
     <AppShell>
+      {!isTechnician && jobs.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              statusFilter === "all"
+                ? "bg-emerald-600 text-white"
+                : "border border-slate-300 bg-white text-slate-600"
+            }`}
+          >
+            All ({jobs.length})
+          </button>
+          {outsourcedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter("Outsourced")}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                statusFilter === "Outsourced"
+                  ? "bg-purple-600 text-white"
+                  : "border border-purple-200 bg-purple-50 text-purple-800"
+              }`}
+            >
+              Outsourced ({outsourcedCount})
+            </button>
+          )}
+        </div>
+      )}
+
       {isTechnician && (
         <div className="mb-3">
           <TechnicianJobScopeToggle scope={scope} onChange={setScope} />
@@ -82,17 +118,19 @@ export default function PendingJobsPage() {
 
       {loading ? (
         <p className="text-center text-sm text-slate-500">Loading…</p>
-      ) : jobs.length === 0 ? (
+      ) : displayedJobs.length === 0 ? (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-center">
           <p className="text-sm font-semibold text-emerald-800">
             {isTechnician && scope === "my"
               ? "No jobs assigned to you"
-              : "No active jobs"}
+              : statusFilter === "Outsourced"
+                ? "No outsourced jobs"
+                : "No active jobs"}
           </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {jobs.map((job) => (
+          {displayedJobs.map((job) => (
             <JobListCard
               key={job.id}
               id={job.id}
@@ -104,9 +142,11 @@ export default function PendingJobsPage() {
               complaint={job.complaint}
               showServiceAmount={!isTechnician}
               meta={
-                !isTechnician && job.assignedTechnician
-                  ? job.assignedTechnician.name
-                  : undefined
+                job.status === "Outsourced" && job.outsourcedTo
+                  ? `With ${job.outsourcedTo.name}`
+                  : !isTechnician && job.assignedTechnician
+                    ? job.assignedTechnician.name
+                    : undefined
               }
             />
           ))}
@@ -151,9 +191,10 @@ export default function PendingJobsPage() {
         </div>
       )}
 
-      {!isTechnician && !loading && jobs.length > 0 && (
+      {!isTechnician && !loading && displayedJobs.length > 0 && (
         <p className="mt-2 text-xs text-slate-500">
-          {jobs.length} active job{jobs.length === 1 ? "" : "s"}
+          {displayedJobs.length} active job{displayedJobs.length === 1 ? "" : "s"}
+          {statusFilter === "Outsourced" ? " (outsourced)" : ""}
         </p>
       )}
     </AppShell>

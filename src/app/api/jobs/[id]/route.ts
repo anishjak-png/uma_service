@@ -4,6 +4,8 @@ import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { parseServiceAmount } from "@/lib/currency";
 import { jobPatchSelect } from "@/lib/job-selects";
+import { staffActorName, parseAccessories, serializeAccessories } from "@/lib/jobs";
+import { validateAccessoriesForAppliance } from "@/lib/lookups";
 import {
   canDeliverJob,
   canEditCompletedBy,
@@ -26,6 +28,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       customer: true,
       assignedTechnician: true,
       completedByTechnician: true,
+      outsourcedTo: true,
+      completedByOutsource: true,
       statusHistory: { orderBy: { changedAt: "desc" } },
     },
   });
@@ -76,16 +80,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const data: Record<string, unknown> = {};
-    const changedBy =
-      session.role === "technician" && session.technicianName
-        ? session.technicianName
-        : session.role;
+    const changedBy = staffActorName(session);
 
     let statusChange: JobStatus | null = null;
     let statusNote: string | undefined;
 
     if (body.status) {
       const newStatus = body.status as JobStatus;
+      const fromOutsourced = existing.status === "Outsourced";
 
       if (existing.status === "Delivered" && newStatus !== "Delivered") {
         if (!canReopenDeliveredJob(session.role)) {
@@ -104,7 +106,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         );
       }
 
-      if (newStatus === "Ready") {
+      if (newStatus === "Outsourced") {
+        const outsourcedToId = body.outsourcedToId;
+        if (!outsourcedToId || typeof outsourcedToId !== "string") {
+          return NextResponse.json(
+            { error: "Select an outsource partner" },
+            { status: 400 }
+          );
+        }
+        const partner = await prisma.outsourcePartner.findFirst({
+          where: { id: outsourcedToId, active: true },
+        });
+        if (!partner) {
+          return NextResponse.json(
+            { error: "Invalid outsource partner" },
+            { status: 400 }
+          );
+        }
+        data.status = "Outsourced";
+        data.outsourcedToId = partner.id;
+        data.outsourcedAt = new Date();
+        data.assignedTechnicianId = null;
+        statusChange = "Outsourced";
+        statusNote = body.note ?? `Sent to ${partner.name}`;
+      } else if (newStatus === "Ready") {
         if (amountLocked && !canEditServiceAmount(session.role)) {
           if (existing.serviceAmount == null) {
             return NextResponse.json(
@@ -126,7 +151,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           data.readyAt = new Date();
         }
 
-        if (!existing.completedByTechnicianId) {
+        if (fromOutsourced && existing.outsourcedToId) {
+          data.completedByOutsourceId = existing.outsourcedToId;
+          data.outsourcedToId = null;
+          data.outsourcedAt = null;
+          const partner = await prisma.outsourcePartner.findUnique({
+            where: { id: existing.outsourcedToId },
+          });
+          statusNote =
+            body.note ??
+            `Received from ${partner?.name ?? "outsource partner"} — Ready`;
+        } else if (!existing.completedByTechnicianId) {
           if (session.role === "technician" && session.technicianId) {
             data.completedByTechnicianId = session.technicianId;
           } else if (session.role === "reception" || session.role === "admin") {
@@ -149,20 +184,39 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             data.completedByTechnicianId = completedById;
           }
         }
-      }
 
-      if (newStatus === "Return") {
+        data.status = "Ready";
+        statusChange = "Ready";
+        if (!statusNote) statusNote = body.note ?? undefined;
+      } else if (newStatus === "Return") {
         data.serviceAmount = 0;
-      }
+        data.status = "Return";
+        statusChange = "Return";
 
-      data.status = newStatus;
+        if (fromOutsourced && existing.outsourcedToId) {
+          data.completedByOutsourceId = existing.outsourcedToId;
+          data.outsourcedToId = null;
+          data.outsourcedAt = null;
+          const partner = await prisma.outsourcePartner.findUnique({
+            where: { id: existing.outsourcedToId },
+          });
+          statusNote =
+            body.note ??
+            `Received from ${partner?.name ?? "outsource partner"} — Return`;
+        } else {
+          statusNote = body.note ?? undefined;
+        }
+      } else {
+        data.status = newStatus;
+        statusChange = newStatus;
+        statusNote = body.note ?? undefined;
+        data.outsourcedToId = null;
+        data.outsourcedAt = null;
+      }
 
       if (newStatus === "Delivered") {
         data.deliveredAt = new Date();
       }
-
-      statusChange = newStatus;
-      statusNote = body.note ?? undefined;
     }
 
     if (
@@ -209,6 +263,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           body.whatsappNotificationsOverride
         );
       }
+    }
+
+    if (body.accessories !== undefined && existing.status !== "Delivered") {
+      const list = Array.isArray(body.accessories)
+        ? body.accessories.filter((a: unknown) => typeof a === "string")
+        : parseAccessories(String(body.accessories));
+      const valid = await validateAccessoriesForAppliance(
+        existing.applianceType,
+        list
+      );
+      if (!valid) {
+        return NextResponse.json(
+          { error: "One or more accessories are not allowed for this product" },
+          { status: 400 }
+        );
+      }
+      data.accessories = serializeAccessories(list);
     }
 
     const jobId = existing.id;

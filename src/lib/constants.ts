@@ -30,6 +30,7 @@ export const MAX_PRODUCT_PHOTOS = 3;
 export const JOB_STATUSES = [
   "Pending",
   "WaitingForCustomerApproval",
+  "Outsourced",
   "Ready",
   "Return",
   "Delivered",
@@ -40,6 +41,7 @@ export type JobStatusValue = (typeof JOB_STATUSES)[number];
 export const STATUS_LABELS: Record<string, string> = {
   Pending: "Pending",
   WaitingForCustomerApproval: "Waiting for Customer Approval",
+  Outsourced: "Outsourced",
   Ready: "Ready",
   Return: "Return",
   Delivered: "Delivered",
@@ -48,6 +50,7 @@ export const STATUS_LABELS: Record<string, string> = {
 export const ACTIVE_STATUSES = [
   "Pending",
   "WaitingForCustomerApproval",
+  "Outsourced",
   "Ready",
   "Return",
 ] as const;
@@ -64,10 +67,16 @@ export function getSelectableStatuses(
     return [...ACTIVE_STATUSES];
   }
 
-  const options = JOB_STATUSES.filter((s) => s !== current);
+  if (current === "Outsourced") {
+    return role === "admin"
+      ? ["Ready", "Return", "Pending", "WaitingForCustomerApproval"]
+      : ["Ready", "Return"];
+  }
+
+  const options = JOB_STATUSES.filter((s) => s !== current && s !== "Delivered");
 
   if (role === "technician") {
-    return options.filter((s) => s !== "Delivered");
+    return options;
   }
 
   return options;

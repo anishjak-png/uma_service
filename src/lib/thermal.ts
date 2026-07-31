@@ -1,5 +1,5 @@
 import { APP_URL, SHOP_NAME, SHOP_PHONE } from "./constants";
-import { formatMobileDisplay } from "./jobs";
+import { formatMobileDisplay, parseAccessories } from "./jobs";
 
 export interface ReceiptData {
   jobNumber: string;
@@ -10,6 +10,7 @@ export interface ReceiptData {
   brand?: string | null;
   model?: string | null;
   complaint: string;
+  accessories?: string[] | null;
   statusUrl: string;
 }
 
@@ -24,6 +25,7 @@ export function buildReceiptData(job: {
   brand?: string | null;
   model?: string | null;
   complaint: string;
+  accessories?: string | null;
 }): ReceiptData {
   return {
     jobNumber: job.jobNumber,
@@ -38,6 +40,7 @@ export function buildReceiptData(job: {
     brand: job.brand,
     model: job.model,
     complaint: job.complaint,
+    accessories: parseAccessories(job.accessories),
     statusUrl: `${APP_URL}/j/${encodeURIComponent(job.jobNumber)}`,
   };
 }
@@ -88,6 +91,14 @@ function buildDetailLines(data: ReceiptData): string[] {
     formatLabelLine("Product", product),
     formatLabelLine("Complaint", complaint)
   );
+
+  if (data.accessories && data.accessories.length > 0) {
+    const accessoriesText = truncateValue(
+      data.accessories.join(", "),
+      RECEIPT_WIDTH - LABEL_WIDTH - 2
+    );
+    lines.push(formatLabelLine("Accessories", accessoriesText));
+  }
 
   return lines;
 }

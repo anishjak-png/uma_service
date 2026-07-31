@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 const tabs = [
   { id: "devices", label: "Devices" },
   { id: "staff", label: "Staff" },
+  { id: "outsource", label: "Outsource" },
   { id: "technicians", label: "Technicians" },
   { id: "appliances", label: "Appliances" },
   { id: "customers", label: "Customers" },

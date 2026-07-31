@@ -22,6 +22,7 @@ model Customer {
 enum JobStatus {
   Pending
   WaitingForCustomerApproval
+  Outsourced
   Ready
   Return
   Delivered
@@ -126,6 +127,24 @@ model ApplianceComplaint {
   @@index([applianceType])
 }
 
+model ApplianceAccessory {
+  id            String @id @default(cuid())
+  applianceType String
+  accessory     String
+
+  @@unique([applianceType, accessory])
+  @@index([applianceType])
+}
+
+model OutsourcePartner {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  active          Boolean   @default(true)
+  outsourcedJobs  JobCard[] @relation("OutsourcedTo")
+  completedJobs   JobCard[] @relation("CompletedByOutsource")
+  createdAt       DateTime  @default(now())
+}
+
 model JobCard {
   id                   String          @id @default(cuid())
   jobNumber            String          @unique
@@ -137,6 +156,7 @@ model JobCard {
   complaint            String
   physicalCondition    String?
   productPhotos        String?
+  accessories          String?
   serviceAmount        Float?
   status               JobStatus       @default(Pending)
   remarks                      String?
@@ -149,6 +169,11 @@ model JobCard {
   assignedTechnician       Technician?     @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
   completedByTechnicianId  String?
   completedByTechnician    Technician?     @relation("CompletedByTechnician", fields: [completedByTechnicianId], references: [id])
+  outsourcedToId           String?
+  outsourcedTo             OutsourcePartner? @relation("OutsourcedTo", fields: [outsourcedToId], references: [id], onDelete: SetNull)
+  outsourcedAt             DateTime?
+  completedByOutsourceId     String?
+  completedByOutsource     OutsourcePartner? @relation("CompletedByOutsource", fields: [completedByOutsourceId], references: [id], onDelete: SetNull)
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
   statusHistory            StatusHistory[]
@@ -159,6 +184,8 @@ model JobCard {
   @@index([status])
   @@index([assignedTechnicianId])
   @@index([completedByTechnicianId])
+  @@index([outsourcedToId])
+  @@index([completedByOutsourceId])
   @@index([receivedAt])
 }
 

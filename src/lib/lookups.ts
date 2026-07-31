@@ -58,12 +58,21 @@ export async function getComplaintsForAppliance(applianceType: string) {
   return rows.map((row) => row.complaint);
 }
 
+export async function getAccessoriesForAppliance(applianceType: string) {
+  const rows = await prisma.applianceAccessory.findMany({
+    where: { applianceType },
+    orderBy: { accessory: "asc" },
+  });
+  return rows.map((row) => row.accessory);
+}
+
 export async function getApplianceLookups(applianceType: string) {
-  const [brands, complaints] = await Promise.all([
+  const [brands, complaints, accessories] = await Promise.all([
     getBrandsForAppliance(applianceType),
     getComplaintsForAppliance(applianceType),
+    getAccessoriesForAppliance(applianceType),
   ]);
-  return { brands, complaints };
+  return { brands, complaints, accessories };
 }
 
 export async function addApplianceBrand(applianceType: string, brand: string) {
@@ -99,6 +108,38 @@ export async function addApplianceComplaint(
   });
 
   return { mapping };
+}
+
+export async function addApplianceAccessory(
+  applianceType: string,
+  accessory: string
+) {
+  const trimmed = accessory.trim();
+  if (!trimmed) return { error: "Accessory required" as const };
+
+  const mapping = await prisma.applianceAccessory.upsert({
+    where: {
+      applianceType_accessory: { applianceType, accessory: trimmed },
+    },
+    update: {},
+    create: { applianceType, accessory: trimmed },
+  });
+
+  return { mapping };
+}
+
+export async function removeApplianceAccessory(
+  applianceType: string,
+  accessory: string
+) {
+  const trimmed = accessory.trim();
+  if (!trimmed) return { error: "Accessory required" as const };
+
+  await prisma.applianceAccessory.deleteMany({
+    where: { applianceType, accessory: trimmed },
+  });
+
+  return { ok: true as const };
 }
 
 export async function removeApplianceBrand(applianceType: string, brand: string) {
@@ -181,6 +222,32 @@ export async function isComplaintAllowedForAppliance(
   return Boolean(mapping);
 }
 
+export async function isAccessoryAllowedForAppliance(
+  applianceType: string,
+  accessory: string
+) {
+  const trimmed = accessory.trim();
+  if (trimmed.startsWith("Other:")) return true;
+  const mapping = await prisma.applianceAccessory.findUnique({
+    where: {
+      applianceType_accessory: { applianceType, accessory: trimmed },
+    },
+  });
+  return Boolean(mapping);
+}
+
+export async function validateAccessoriesForAppliance(
+  applianceType: string,
+  accessories: string[]
+) {
+  for (const accessory of accessories) {
+    if (!(await isAccessoryAllowedForAppliance(applianceType, accessory))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function getDefaultTechnicianForAppliance(applianceType: string) {
   const mapping = await prisma.applianceTechnician.findUnique({
     where: { applianceType },
@@ -237,6 +304,11 @@ export async function updateApplianceOption(id: string, newValue: string) {
       data: { applianceType: trimmed },
     });
 
+    await tx.applianceAccessory.updateMany({
+      where: { applianceType: oldValue },
+      data: { applianceType: trimmed },
+    });
+
     return tx.lookupOption.update({
       where: { id },
       data: { value: trimmed },
@@ -255,7 +327,7 @@ export async function deleteApplianceOption(id: string) {
   const activeJobs = await prisma.jobCard.count({
     where: {
       applianceType: existing.value,
-      status: { in: ["Pending", "WaitingForCustomerApproval", "Ready", "Return"] },
+      status: { in: ["Pending", "WaitingForCustomerApproval", "Outsourced", "Ready", "Return"] },
     },
   });
 
@@ -273,6 +345,9 @@ export async function deleteApplianceOption(id: string) {
       where: { applianceType: existing.value },
     }),
     prisma.applianceComplaint.deleteMany({
+      where: { applianceType: existing.value },
+    }),
+    prisma.applianceAccessory.deleteMany({
       where: { applianceType: existing.value },
     }),
     prisma.lookupOption.delete({ where: { id } }),

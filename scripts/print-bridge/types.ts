@@ -18,6 +18,7 @@ export type JobCardRow = {
   brand: string;
   model: string | null;
   complaint: string;
+  accessories?: string | null;
   Customer: {
     mobile: string;
     name: string | null;
