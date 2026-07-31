@@ -44,12 +44,35 @@ Copy [`.env.shop.example`](../.env.shop.example):
 | `PRINT_BRANCH_ID` | `main` |
 | `PRINT_PRINTER_ID` | `counter-1` |
 
-## Start the bridge
+## Shop PC — one-click install (recommended)
 
-```bash
-npm install
-npm run print-bridge
+On the shop PC, double-click:
+
 ```
+scripts/shop-pc/INSTALL.bat
+```
+
+This will:
+
+1. Install Node/npm dependencies (clone repo to `%USERPROFILE%\UmaService` if needed)
+2. Create `.env` from `.env.shop.example` (opens Notepad for Supabase keys)
+3. Test printer connection
+4. Register **auto-start on Windows login** (Task Scheduler)
+5. Start the bridge immediately
+
+**Daily use:** nothing — bridge starts when you log in.
+
+| File | Purpose |
+|------|---------|
+| `INSTALL.bat` | One-time setup |
+| `START-NOW.bat` | Manual start |
+| `Uninstall-PrintBridge.bat` | Remove auto-start only |
+
+Logs: `logs/print-bridge.log` in the project folder.
+
+---
+
+## Manual setup (alternative)
 
 Expected logs:
 
