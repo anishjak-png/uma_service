@@ -13,6 +13,21 @@ function Write-Step([string]$Message) {
   Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
+function Read-EnvSetting {
+  param(
+    [string]$Content,
+    [string[]]$Keys,
+    [string]$Default = ""
+  )
+  foreach ($key in $Keys) {
+    $pattern = "(?m)^" + [regex]::Escape($key) + '="([^"]*)"'
+    if ($Content -match $pattern) {
+      return $Matches[1]
+    }
+  }
+  return $Default
+}
+
 function Ensure-Node {
   $node = Get-Command node -ErrorAction SilentlyContinue
   if (-not $node) {
@@ -43,7 +58,6 @@ function Ensure-Project {
     return (Resolve-Path $ProjectPath).Path
   }
 
-  # Running INSTALL.bat from inside the repo — use current project.
   $scriptRoot = $PSScriptRoot
   if ($scriptRoot) {
     $candidate = Get-ProjectRootFromScript -ScriptRoot $scriptRoot
@@ -84,7 +98,7 @@ function Ensure-EnvFile {
   $example = Join-Path $Root ".env.shop.example"
 
   if (Test-Path $envFile) {
-    Write-Host ".env already exists — keeping your settings" -ForegroundColor DarkGray
+    Write-Host ".env already exists - keeping your settings" -ForegroundColor DarkGray
     return
   }
 
@@ -95,8 +109,8 @@ function Ensure-EnvFile {
   Copy-Item $example $envFile
   Write-Host ""
   Write-Host "Created .env from template." -ForegroundColor Yellow
-  Write-Host "Add your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from Supabase Dashboard -> Settings -> API." -ForegroundColor Yellow
-  Write-Host "Confirm PRINTER_IP and Supabase keys in .env." -ForegroundColor Yellow
+  Write-Host "Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from Supabase Dashboard -> Settings -> API." -ForegroundColor Yellow
+  Write-Host "Set PRINTER_IP to your LAN printer address." -ForegroundColor Yellow
   Write-Host ""
   $open = Read-Host "Open .env in Notepad now? (Y/n)"
   if ($open -ne "n" -and $open -ne "N") {
@@ -109,24 +123,21 @@ function Test-PrinterPort {
   param([string]$Root)
 
   $envContent = Get-Content (Join-Path $Root ".env") -Raw
-  $host = if ($envContent -match 'PRINTER_IP="([^"]+)"') { $Matches[1] }
-          elseif ($envContent -match 'THERMAL_PRINTER_HOST="([^"]+)"') { $Matches[1] }
-          else { "" }
-  $port = if ($envContent -match 'PRINTER_PORT="([^"]+)"') { [int]$Matches[1] }
-          elseif ($envContent -match 'THERMAL_PRINTER_PORT="([^"]+)"') { [int]$Matches[1] }
-          else { 9100 }
+  $printerIp = Read-EnvSetting -Content $envContent -Keys @("PRINTER_IP", "THERMAL_PRINTER_HOST")
+  $portText = Read-EnvSetting -Content $envContent -Keys @("PRINTER_PORT", "THERMAL_PRINTER_PORT") -Default "9100"
+  $port = [int]$portText
 
-  if (-not $host) {
-    Write-Host "PRINTER_IP not set in .env — skipping printer test." -ForegroundColor Yellow
+  if (-not $printerIp) {
+    Write-Host "PRINTER_IP not set in .env - skipping printer test." -ForegroundColor Yellow
     return
   }
 
-  Write-Step "Testing printer $host`:$port"
-  $result = Test-NetConnection -ComputerName $host -Port $port -WarningAction SilentlyContinue
+  Write-Step "Testing printer ${printerIp}:${port}"
+  $result = Test-NetConnection -ComputerName $printerIp -Port $port -WarningAction SilentlyContinue
   if ($result.TcpTestSucceeded) {
     Write-Host "Printer reachable" -ForegroundColor Green
   } else {
-    Write-Host "Printer not reachable — check LAN/IP before shop opens." -ForegroundColor Yellow
+    Write-Host "Printer not reachable - check LAN/IP before shop opens." -ForegroundColor Yellow
   }
 }
 
@@ -135,12 +146,12 @@ function Register-LoginStartup {
 
   Write-Step "Registering auto-start on Windows login"
 
-  $ps = (Get-Command powershell.exe).Source
-  $args = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File `"$StartScript`""
+  $psExe = (Get-Command powershell.exe).Source
+  $taskArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File `"$StartScript`""
 
   Unregister-ScheduledTask -TaskName $script:ShopPcTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
-  $action = New-ScheduledTaskAction -Execute $ps -Argument $args
+  $action = New-ScheduledTaskAction -Execute $psExe -Argument $taskArgs
   $trigger = New-ScheduledTaskTrigger -AtLogon -User $env:USERNAME
   $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -154,15 +165,15 @@ function Register-LoginStartup {
     -Action $action `
     -Trigger $trigger `
     -Settings $settings `
-    -Description "Uma Traders — thermal receipt print bridge (Supabase Realtime)" `
+    -Description "Uma Traders print bridge (Supabase Realtime)" `
     | Out-Null
 
   Write-Host "Task '$($script:ShopPcTaskName)' will run at every login." -ForegroundColor Green
 }
 
 Write-Host ""
-Write-Host "  Uma Traders — Print Bridge Installer" -ForegroundColor Green
-Write-Host "  ==================================" -ForegroundColor Green
+Write-Host "  Uma Traders - Print Bridge Installer" -ForegroundColor Green
+Write-Host "  ====================================" -ForegroundColor Green
 
 Ensure-Node
 Ensure-Git
@@ -192,8 +203,8 @@ try {
   Write-Host "Done!" -ForegroundColor Green
   Write-Host "  - Bridge starts automatically on every login" -ForegroundColor DarkGray
   Write-Host "  - Health dashboard: http://localhost:3005" -ForegroundColor DarkGray
-  Write-Host "  - Admin updates: scripts/shop-pc/Update-PrintBridge.bat" -ForegroundColor DarkGray
-  Write-Host "  - Logs: $root\logs\ (7 rotated files)" -ForegroundColor DarkGray
+  Write-Host "  - Admin updates: Update-PrintBridge.bat" -ForegroundColor DarkGray
+  Write-Host ("  - Logs: {0}\logs - 7 rotated files" -f $root) -ForegroundColor DarkGray
   Write-Host "  - To remove auto-start: Uninstall-PrintBridge.bat" -ForegroundColor DarkGray
   Write-Host ""
 }
