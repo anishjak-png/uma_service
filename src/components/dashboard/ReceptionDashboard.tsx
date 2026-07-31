@@ -8,19 +8,21 @@ type ReceptionDashboardProps = {
     pendingJobs: number;
     readyJobs: number;
     waitingApprovalJobs: number;
+    outsourcedJobs: number;
+    warrantyJobs: number;
     readyForPickup: Array<{
       id: string;
       jobNumber: string;
       brand: string;
       applianceType: string;
+      readyAt?: string | Date | null;
       serviceAmount?: number | null;
       customer: { name?: string | null; mobile: string };
     }>;
   };
-  showAmounts: boolean;
 };
 
-export function ReceptionDashboard({ data, showAmounts }: ReceptionDashboardProps) {
+export function ReceptionDashboard({ data }: ReceptionDashboardProps) {
   return (
     <div className="space-y-3">
       <Link
@@ -30,23 +32,16 @@ export function ReceptionDashboard({ data, showAmounts }: ReceptionDashboardProp
         New Job
       </Link>
 
-      <Link
-        href="/jobs/search"
-        className="block rounded-md border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
-      >
-        Search
-      </Link>
-
       <section>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Ready for Delivery
         </p>
-        <ReadyPickupList jobs={data.readyForPickup} showAmounts={showAmounts} />
+        <ReadyPickupList jobs={data.readyForPickup} />
       </section>
 
       <section>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Today&apos;s Jobs
+          Job Stats
         </p>
         <div className="grid grid-cols-2 gap-2">
           <StatCard label="Today" value={data.todayJobs} />
@@ -55,6 +50,18 @@ export function ReceptionDashboard({ data, showAmounts }: ReceptionDashboardProp
             value={data.pendingJobs}
             href="/jobs/search?status=Pending"
             valueClassName="text-blue-700"
+          />
+          <StatCard
+            label="Warranty"
+            value={data.warrantyJobs}
+            href="/jobs/pending?warranty=true"
+            valueClassName="text-sky-700"
+          />
+          <StatCard
+            label="Outsourced"
+            value={data.outsourcedJobs}
+            href="/jobs/search?status=Outsourced"
+            valueClassName="text-purple-700"
           />
           <StatCard
             label="Ready"

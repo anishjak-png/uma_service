@@ -4,7 +4,13 @@ import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { parseServiceAmount } from "@/lib/currency";
 import { jobPatchSelect } from "@/lib/job-selects";
-import { staffActorName, parseAccessories, serializeAccessories } from "@/lib/jobs";
+import {
+  accessoryNames,
+  staffActorName,
+  parseAccessories,
+  parseOptionalDateInput,
+  serializeAccessories,
+} from "@/lib/jobs";
 import { validateAccessoriesForAppliance } from "@/lib/lookups";
 import {
   canDeliverJob,
@@ -88,6 +94,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.status) {
       const newStatus = body.status as JobStatus;
       const fromOutsourced = existing.status === "Outsourced";
+      const fromWarranty =
+        existing.status === "WarrantyPending" ||
+        existing.status === "WarrantyWithCompany";
 
       if (existing.status === "Delivered" && newStatus !== "Delivered") {
         if (!canReopenDeliveredJob(session.role)) {
@@ -106,7 +115,44 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         );
       }
 
-      if (newStatus === "Outsourced") {
+      if (newStatus === "WarrantyWithCompany") {
+        if (!existing.isWarranty && body.convertToWarranty !== true) {
+          return NextResponse.json(
+            { error: "Only warranty jobs can be sent with company" },
+            { status: 400 }
+          );
+        }
+        data.status = "WarrantyWithCompany";
+        data.isWarranty = true;
+        data.warrantyTakenAt = new Date();
+        data.assignedTechnicianId = null;
+        data.outsourcedToId = null;
+        data.outsourcedAt = null;
+        statusChange = "WarrantyWithCompany";
+        statusNote =
+          body.note ??
+          `Product taken by ${existing.brand} for warranty service`;
+      } else if (newStatus === "WarrantyPending") {
+        const converting = !existing.isWarranty;
+        if (converting && session.role === "technician") {
+          return NextResponse.json(
+            { error: "Only reception or admin can convert a job to warranty" },
+            { status: 403 }
+          );
+        }
+        data.status = "WarrantyPending";
+        data.isWarranty = true;
+        data.warrantyTakenAt = null;
+        data.assignedTechnicianId = null;
+        data.outsourcedToId = null;
+        data.outsourcedAt = null;
+        statusChange = "WarrantyPending";
+        statusNote = converting
+          ? body.note ??
+            `Converted to warranty by ${changedBy} — ${existing.brand}`
+          : body.note ??
+            `Back at store — waiting for ${existing.brand} warranty visit`;
+      } else if (newStatus === "Outsourced") {
         const outsourcedToId = body.outsourcedToId;
         if (!outsourcedToId || typeof outsourcedToId !== "string") {
           return NextResponse.json(
@@ -161,6 +207,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           statusNote =
             body.note ??
             `Received from ${partner?.name ?? "outsource partner"} — Ready`;
+        } else if (fromWarranty) {
+          data.warrantyTakenAt = null;
+          statusNote =
+            body.note ?? `Warranty completed by ${existing.brand} — Ready`;
         } else if (!existing.completedByTechnicianId) {
           if (session.role === "technician" && session.technicianId) {
             data.completedByTechnicianId = session.technicianId;
@@ -203,6 +253,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           statusNote =
             body.note ??
             `Received from ${partner?.name ?? "outsource partner"} — Return`;
+        } else if (fromWarranty) {
+          data.warrantyTakenAt = null;
+          statusNote = body.note ?? `Warranty return by ${existing.brand}`;
         } else {
           statusNote = body.note ?? undefined;
         }
@@ -238,6 +291,34 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.remarks = body.remarks;
     }
 
+    if (body.warrantyPurchaseDate !== undefined) {
+      if (session.role === "technician") {
+        return NextResponse.json(
+          { error: "Not allowed to edit warranty purchase date" },
+          { status: 403 }
+        );
+      }
+      const becomingWarranty =
+        Boolean(data.isWarranty) ||
+        existing.isWarranty ||
+        body.status === "WarrantyPending" ||
+        body.status === "WarrantyWithCompany";
+      if (!becomingWarranty) {
+        return NextResponse.json(
+          { error: "Purchase date applies only to warranty jobs" },
+          { status: 400 }
+        );
+      }
+      const purchaseDate = parseOptionalDateInput(body.warrantyPurchaseDate);
+      if (purchaseDate === undefined) {
+        return NextResponse.json(
+          { error: "Invalid purchase date" },
+          { status: 400 }
+        );
+      }
+      data.warrantyPurchaseDate = purchaseDate;
+    }
+
     if (body.assignedTechnicianId != null && session.role !== "technician") {
       data.assignedTechnicianId = body.assignedTechnicianId || null;
     }
@@ -266,12 +347,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     if (body.accessories !== undefined && existing.status !== "Delivered") {
-      const list = Array.isArray(body.accessories)
-        ? body.accessories.filter((a: unknown) => typeof a === "string")
-        : parseAccessories(String(body.accessories));
+      const list = parseAccessories(
+        typeof body.accessories === "string"
+          ? body.accessories
+          : JSON.stringify(body.accessories)
+      );
       const valid = await validateAccessoriesForAppliance(
         existing.applianceType,
-        list
+        accessoryNames(list)
       );
       if (!valid) {
         return NextResponse.json(

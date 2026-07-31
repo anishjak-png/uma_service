@@ -10,6 +10,8 @@ type AdminDashboardProps = {
     readyJobs: number;
     deliveredJobs: number;
     waitingApprovalJobs: number;
+    outsourcedJobs: number;
+    warrantyJobs: number;
     todayCollection: number;
     monthlyCollection: number;
     pendingCollection: number;
@@ -18,6 +20,7 @@ type AdminDashboardProps = {
       jobNumber: string;
       brand: string;
       applianceType: string;
+      readyAt?: string | Date | null;
       serviceAmount?: number | null;
       customer: { name?: string | null; mobile: string };
     }>;
@@ -78,12 +81,24 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
             href="/jobs/search?status=Pending"
             valueClassName="text-blue-700"
           />
-          <StatCard
-            label="Ready"
-            value={data.readyJobs}
-            href="/jobs/search?status=Ready"
-            valueClassName="text-emerald-700"
-          />
+              <StatCard
+                label="Warranty"
+                value={data.warrantyJobs}
+                href="/jobs/pending?warranty=true"
+                valueClassName="text-sky-700"
+              />
+              <StatCard
+                label="Outsourced"
+                value={data.outsourcedJobs}
+                href="/jobs/search?status=Outsourced"
+                valueClassName="text-purple-700"
+              />
+              <StatCard
+                label="Ready"
+                value={data.readyJobs}
+                href="/jobs/search?status=Ready"
+                valueClassName="text-emerald-700"
+              />
           <StatCard
             label="Delivered"
             value={data.deliveredJobs}
@@ -96,7 +111,7 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Ready for Delivery
         </p>
-        <ReadyPickupList jobs={data.readyForPickup} showAmounts />
+        <ReadyPickupList jobs={data.readyForPickup} />
       </section>
 
       <Link

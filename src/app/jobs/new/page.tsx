@@ -44,8 +44,11 @@ export default function NewJobPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [assignedTechName, setAssignedTechName] = useState<string | null>(null);
-  const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
+  const [accessoryQty, setAccessoryQty] = useState<Record<string, number>>({});
   const [otherAccessory, setOtherAccessory] = useState("");
+  const [otherAccessoryQty, setOtherAccessoryQty] = useState(1);
+  const [isWarranty, setIsWarranty] = useState(false);
+  const [warrantyPurchaseDate, setWarrantyPurchaseDate] = useState("");
   const [lookupsLoading, setLookupsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -126,15 +129,26 @@ export default function NewJobPage() {
   async function handleApplianceSelect(appliance: string) {
     setBrand("");
     setComplaint("");
-    setSelectedAccessories([]);
+    setAccessoryQty({});
     setOtherAccessory("");
+    setOtherAccessoryQty(1);
     await Promise.all([fetchAssignedTech(appliance), loadProductLookups(appliance)]);
   }
 
-  function toggleAccessory(name: string) {
-    setSelectedAccessories((prev) =>
-      prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]
-    );
+  function toggleAccessory(name: string, checked: boolean) {
+    setAccessoryQty((prev) => {
+      if (!checked) {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      }
+      return { ...prev, [name]: prev[name] ?? 1 };
+    });
+  }
+
+  function setQty(name: string, qty: number) {
+    const nextQty = Number.isFinite(qty) ? Math.max(1, Math.min(999, Math.floor(qty))) : 1;
+    setAccessoryQty((prev) => ({ ...prev, [name]: nextQty }));
   }
 
   function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -172,8 +186,10 @@ export default function NewJobPage() {
     setPhotoFiles([]);
     setPhotoPreviews([]);
     setAssignedTechName(null);
-    setSelectedAccessories([]);
+    setAccessoryQty({});
     setOtherAccessory("");
+    setOtherAccessoryQty(1);
+    setIsWarranty(false);
     setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [], accessory: [] }));
   }
 
@@ -190,9 +206,21 @@ export default function NewJobPage() {
     formData.set("model", model);
     formData.set("complaint", complaint);
     formData.set("physicalCondition", physicalCondition);
-    const accessoriesList = [...selectedAccessories];
+    formData.set("isWarranty", isWarranty ? "true" : "false");
+    if (isWarranty && warrantyPurchaseDate) {
+      formData.set("warrantyPurchaseDate", warrantyPurchaseDate);
+    }
+    const accessoriesList = Object.entries(accessoryQty).map(([name, qty]) => ({
+      name,
+      qty,
+    }));
     const other = otherAccessory.trim();
-    if (other) accessoriesList.push(`Other: ${other}`);
+    if (other) {
+      accessoriesList.push({
+        name: `Other: ${other}`,
+        qty: Math.max(1, Math.min(999, Math.floor(otherAccessoryQty) || 1)),
+      });
+    }
     if (accessoriesList.length > 0) {
       formData.set("accessories", JSON.stringify(accessoriesList));
     }
@@ -203,14 +231,33 @@ export default function NewJobPage() {
       body: formData,
     });
 
-    const data = await res.json();
+    const raw = await res.text();
+    let data: { error?: string } & Record<string, unknown> = {};
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as typeof data;
+      } catch {
+        setError(
+          res.ok
+            ? "Unexpected server response"
+            : `Failed to create job (${res.status})`
+        );
+        setLoading(false);
+        return;
+      }
+    } else if (!res.ok) {
+      setError(`Failed to create job (${res.status})`);
+      setLoading(false);
+      return;
+    }
+
     if (!res.ok) {
       setError(data.error ?? "Failed to create job");
       setLoading(false);
       return;
     }
 
-    setCreatedJob(data);
+    setCreatedJob(data as unknown as CreatedJob);
     setLoading(false);
   }
 
@@ -321,6 +368,55 @@ export default function NewJobPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Service type</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWarranty(false);
+                  setWarrantyPurchaseDate("");
+                }}
+                className={`rounded-md border px-3 py-2.5 text-sm font-semibold ${
+                  !isWarranty
+                    ? "border-emerald-600 bg-emerald-600 text-white"
+                    : "border-slate-300 bg-white text-slate-700"
+                }`}
+              >
+                Out of warranty
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsWarranty(true)}
+                className={`rounded-md border px-3 py-2.5 text-sm font-semibold ${
+                  isWarranty
+                    ? "border-sky-600 bg-sky-600 text-white"
+                    : "border-slate-300 bg-white text-slate-700"
+                }`}
+              >
+                Warranty
+              </button>
+            </div>
+            {isWarranty && (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-slate-700">
+                  Purchase date{" "}
+                  <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={warrantyPurchaseDate}
+                  onChange={(e) => setWarrantyPurchaseDate(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Product Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -335,7 +431,7 @@ export default function NewJobPage() {
               required
             />
 
-            {assignedTechName && (
+            {!isWarranty && assignedTechName && (
               <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 Will assign to technician: <strong>{assignedTechName}</strong>
               </p>
@@ -389,28 +485,61 @@ export default function NewJobPage() {
               <div className="space-y-2">
                 <p className="text-sm font-medium text-slate-700">Accessories received</p>
                 <div className="space-y-2 rounded-md border border-slate-200 p-3">
-                  {lookupOptions.accessory.map((item) => (
-                    <label
-                      key={item}
-                      className="flex items-center gap-2 text-sm text-slate-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAccessories.includes(item)}
-                        onChange={() => toggleAccessory(item)}
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                      {item}
-                    </label>
-                  ))}
+                  {lookupOptions.accessory.map((item) => {
+                    const checked = accessoryQty[item] != null;
+                    return (
+                      <div
+                        key={item}
+                        className="flex items-center gap-2 text-sm text-slate-700"
+                      >
+                        <label className="flex min-w-0 flex-1 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => toggleAccessory(item, e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          <span className="truncate">{item}</span>
+                        </label>
+                        {checked && (
+                          <input
+                            type="number"
+                            min={1}
+                            max={999}
+                            value={accessoryQty[item]}
+                            onChange={(e) => setQty(item, Number(e.target.value))}
+                            className="h-8 w-16 shrink-0 rounded-md border border-slate-300 px-2 text-center text-sm"
+                            aria-label={`${item} quantity`}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <input
-                  type="text"
-                  value={otherAccessory}
-                  onChange={(e) => setOtherAccessory(e.target.value)}
-                  placeholder="Other accessory (optional)"
-                  className="flex h-10 w-full rounded-md border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={otherAccessory}
+                    onChange={(e) => setOtherAccessory(e.target.value)}
+                    placeholder="Other accessory (optional)"
+                    className="flex h-10 min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  />
+                  {otherAccessory.trim() && (
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={otherAccessoryQty}
+                      onChange={(e) =>
+                        setOtherAccessoryQty(
+                          Math.max(1, Math.min(999, Math.floor(Number(e.target.value)) || 1))
+                        )
+                      }
+                      className="h-10 w-16 shrink-0 rounded-md border border-slate-300 px-2 text-center text-sm"
+                      aria-label="Other accessory quantity"
+                    />
+                  )}
+                </div>
               </div>
             )}
 

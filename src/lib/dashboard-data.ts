@@ -23,10 +23,13 @@ function countsFromGroups(groups: Array<{ status: string; _count: { id: number }
     deliveredJobs: map.Delivered ?? 0,
     waitingApprovalJobs: map.WaitingForCustomerApproval ?? 0,
     returnJobs: map.Return ?? 0,
+    outsourcedJobs: map.Outsourced ?? 0,
+    warrantyJobs:
+      (map.WarrantyPending ?? 0) + (map.WarrantyWithCompany ?? 0),
   };
 }
 
-export async function getReceptionDashboardData(showAmounts: boolean) {
+export async function getReceptionDashboardData() {
   const { today, tomorrow } = todayRange();
 
   const [todayJobs, statusGroups, readyForPickup] = await Promise.all([
@@ -44,7 +47,8 @@ export async function getReceptionDashboardData(showAmounts: boolean) {
         jobNumber: true,
         brand: true,
         applianceType: true,
-        ...(showAmounts ? { serviceAmount: true } : {}),
+        readyAt: true,
+        serviceAmount: true,
         customer: { select: { name: true, mobile: true } },
       },
       orderBy: { readyAt: "desc" },
@@ -96,6 +100,7 @@ export async function getAdminDashboardData() {
           jobNumber: true,
           brand: true,
           applianceType: true,
+          readyAt: true,
           serviceAmount: true,
           customer: { select: { name: true, mobile: true } },
         },

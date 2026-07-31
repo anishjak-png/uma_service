@@ -13,7 +13,9 @@ export type JobListCardProps = {
   mobile: string;
   applianceLine: string;
   complaint?: string;
-  meta?: string;
+  /** Bold location/status line (e.g. warranty at store / with company). */
+  emphasis?: string;
+  meta?: ReactNode;
   serviceAmount?: number | null;
   showServiceAmount?: boolean;
   showCallIcon?: boolean;
@@ -29,6 +31,7 @@ export function JobListCard({
   mobile,
   applianceLine,
   complaint,
+  emphasis,
   meta,
   serviceAmount,
   showServiceAmount = true,
@@ -70,6 +73,9 @@ export function JobListCard({
             <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">
               {complaint}
             </p>
+          )}
+          {emphasis && (
+            <p className="mt-1 text-xs font-bold text-slate-900">{emphasis}</p>
           )}
           {meta && (
             <p className="mt-1 line-clamp-1 text-xs text-slate-400">{meta}</p>

@@ -72,10 +72,6 @@ export function OutsourceTab() {
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-800">Outsource partners</h2>
-      <p className="text-sm text-slate-500">
-        Outside repair persons (Hanuram, Perumal, etc.) — jobs sent to them are
-        tracked separately from store technicians.
-      </p>
 
       {loadError && <p className="text-sm text-red-600">{loadError}</p>}
       {message && <p className="text-sm text-emerald-700">{message}</p>}

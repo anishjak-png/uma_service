@@ -2,6 +2,9 @@
 
 import { AppShell } from "@/components/AppShell";
 import { JobListCard } from "@/components/JobListCard";
+import { JobStatusBadge } from "@/components/JobStatusBadge";
+import { formatCurrency } from "@/lib/currency";
+import { formatDateTime } from "@/lib/jobs";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -11,6 +14,7 @@ type DeliveryJob = {
   status: string;
   applianceType: string;
   brand?: string | null;
+  readyAt?: string | null;
   serviceAmount?: number | null;
   customer: { mobile: string; name?: string | null };
 };
@@ -122,27 +126,43 @@ export default function DeliveryContent() {
               {results.length} ready for pickup
             </p>
           )}
-          {results.map((job) => (
-            <JobListCard
-              key={job.id}
-              id={job.id}
-              jobNumber={job.jobNumber}
-              status={job.status}
-              customerName={job.customer.name}
-              mobile={job.customer.mobile}
-              applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
-              serviceAmount={job.serviceAmount}
-              footer={
-                <button
-                  onClick={() => markDelivered(job)}
-                  disabled={deliveringId === job.id}
-                  className="w-full rounded-md bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {deliveringId === job.id ? "Updating…" : "Delivered"}
-                </button>
-              }
-            />
-          ))}
+          {results.map((job) => {
+            const appliance = [job.brand, job.applianceType]
+              .filter(Boolean)
+              .join(" ");
+            const readyLabel = job.readyAt ? formatDateTime(job.readyAt) : null;
+            return (
+              <JobListCard
+                key={job.id}
+                id={job.id}
+                jobNumber={job.jobNumber}
+                status={job.status}
+                customerName={job.customer.name}
+                mobile={job.customer.mobile}
+                applianceLine={[appliance, readyLabel].filter(Boolean).join(" · ")}
+                showServiceAmount={false}
+                badge={
+                  <div className="flex items-center gap-1.5">
+                    {job.serviceAmount != null && (
+                      <span className="text-xs font-bold text-emerald-700">
+                        {formatCurrency(job.serviceAmount)}
+                      </span>
+                    )}
+                    <JobStatusBadge status={job.status} />
+                  </div>
+                }
+                footer={
+                  <button
+                    onClick={() => markDelivered(job)}
+                    disabled={deliveringId === job.id}
+                    className="w-full rounded-md bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {deliveringId === job.id ? "Updating…" : "Delivered"}
+                  </button>
+                }
+              />
+            );
+          })}
         </div>
       )}
     </AppShell>

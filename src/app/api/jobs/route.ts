@@ -2,10 +2,14 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
+  accessoryNames,
   generateJobNumber,
   normalizeMobile,
   normalizeJobNumberQuery,
   detectSearchQueryType,
+  parseAccessories,
+  parseOptionalDateInput,
+  serializeAccessories,
   staffActorName,
 } from "@/lib/jobs";
 import {
@@ -14,7 +18,6 @@ import {
   isComplaintAllowedForAppliance,
   validateAccessoriesForAppliance,
 } from "@/lib/lookups";
-import { serializeAccessories, parseAccessories } from "@/lib/jobs";
 import { runPostJobCreateTasks } from "@/lib/job-create-background";
 import { canCreateJob } from "@/lib/auth";
 import { getSession } from "@/lib/session";
@@ -33,6 +36,8 @@ export async function GET(request: NextRequest) {
   const activeOnly = searchParams.get("active") === "true";
   const deliveryOnly = searchParams.get("delivery") === "true";
   const scopeParam = searchParams.get("scope");
+  const warrantyBrand = searchParams.get("warrantyBrand")?.trim() ?? "";
+  const warrantyOnly = searchParams.get("warranty") === "true";
 
   const where: Record<string, unknown> = {};
 
@@ -61,8 +66,16 @@ export async function GET(request: NextRequest) {
     where.status = status as JobStatus;
   } else if (deliveryOnly) {
     where.status = { in: ["Ready", "Return"] };
+  } else if (warrantyOnly) {
+    where.status = { in: ["WarrantyPending", "WarrantyWithCompany"] };
+    where.isWarranty = true;
   } else if (activeOnly) {
     where.status = { in: [...ACTIVE_STATUSES] };
+  }
+
+  if (warrantyBrand) {
+    where.brand = warrantyBrand;
+    where.isWarranty = true;
   }
 
   const isMobileSearch = detectSearchQueryType(q) === "mobile";
@@ -88,6 +101,17 @@ async function readPhotoBuffers(files: File[]): Promise<PhotoBufferPayload[]> {
 }
 
 export async function POST(request: NextRequest) {
+  try {
+    return await createJob(request);
+  } catch (error) {
+    console.error("[job-create]", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to create job";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function createJob(request: NextRequest) {
   const startedAt = Date.now();
   const session = await getSession();
   if (!session.isLoggedIn || !canCreateJob(session.role)) {
@@ -103,7 +127,9 @@ export async function POST(request: NextRequest) {
   let complaint = "";
   let physicalCondition = "";
   let photoFiles: File[] = [];
-  let accessoriesList: string[] = [];
+  let accessoriesList: ReturnType<typeof parseAccessories> = [];
+  let isWarranty = false;
+  let warrantyPurchaseDateRaw: unknown;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -114,6 +140,10 @@ export async function POST(request: NextRequest) {
     model = String(form.get("model") ?? "");
     complaint = String(form.get("complaint") ?? "");
     physicalCondition = String(form.get("physicalCondition") ?? "");
+    isWarranty =
+      String(form.get("isWarranty") ?? "").toLowerCase() === "true" ||
+      String(form.get("isWarranty") ?? "") === "1";
+    warrantyPurchaseDateRaw = form.get("warrantyPurchaseDate");
     const accessoriesRaw = form.get("accessories");
     if (typeof accessoriesRaw === "string" && accessoriesRaw.trim()) {
       accessoriesList = parseAccessories(accessoriesRaw);
@@ -131,9 +161,13 @@ export async function POST(request: NextRequest) {
     model = body.model ?? "";
     complaint = body.complaint ?? "";
     physicalCondition = body.physicalCondition ?? "";
-    if (Array.isArray(body.accessories)) {
-      accessoriesList = body.accessories.filter(
-        (a: unknown) => typeof a === "string"
+    isWarranty = Boolean(body.isWarranty);
+    warrantyPurchaseDateRaw = body.warrantyPurchaseDate;
+    if (body.accessories !== undefined) {
+      accessoriesList = parseAccessories(
+        typeof body.accessories === "string"
+          ? body.accessories
+          : JSON.stringify(body.accessories)
       );
     }
   }
@@ -176,7 +210,7 @@ export async function POST(request: NextRequest) {
   if (accessoriesList.length > 0) {
     const accessoriesValid = await validateAccessoriesForAppliance(
       applianceType,
-      accessoriesList
+      accessoryNames(accessoriesList)
     );
     if (!accessoriesValid) {
       return NextResponse.json(
@@ -193,7 +227,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let warrantyPurchaseDate: Date | null = null;
+  if (isWarranty && warrantyPurchaseDateRaw != null && warrantyPurchaseDateRaw !== "") {
+    const parsed = parseOptionalDateInput(warrantyPurchaseDateRaw);
+    if (parsed === undefined) {
+      return NextResponse.json(
+        { error: "Invalid purchase date" },
+        { status: 400 }
+      );
+    }
+    warrantyPurchaseDate = parsed;
+  }
+
   const creatorName = staffActorName(session);
+  const brandName = brand.trim();
 
   const [customer, jobNumber, defaultTech] = await Promise.all([
     prisma.customer.upsert({
@@ -205,29 +252,37 @@ export async function POST(request: NextRequest) {
       },
     }),
     generateJobNumber(),
-    getDefaultTechnicianForAppliance(applianceType),
+    isWarranty ? Promise.resolve(null) : getDefaultTechnicianForAppliance(applianceType),
   ]);
+
+  const initialStatus = isWarranty ? "WarrantyPending" : "Pending";
+  const createNote = isWarranty
+    ? `Warranty job created by ${creatorName} — ${brandName}`
+    : defaultTech
+      ? `Job card created by ${creatorName} — assigned to ${defaultTech.name}`
+      : `Job card created by ${creatorName}`;
 
   const job = await prisma.jobCard.create({
     data: {
       jobNumber,
       customerId: customer.id,
       applianceType,
-      brand: brand.trim(),
+      brand: brandName,
       model: model?.trim() || null,
       complaint,
       physicalCondition: physicalCondition?.trim() || null,
       accessories: serializeAccessories(accessoriesList),
       productPhotos: null,
-      assignedTechnicianId: defaultTech?.id ?? null,
+      status: initialStatus,
+      assignedTechnicianId: isWarranty ? null : defaultTech?.id ?? null,
+      isWarranty,
+      warrantyPurchaseDate: isWarranty ? warrantyPurchaseDate : null,
       createdBy: creatorName,
       statusHistory: {
         create: {
-          status: "Pending",
+          status: initialStatus,
           changedBy: creatorName,
-          note: defaultTech
-            ? `Job card created by ${creatorName} — assigned to ${defaultTech.name}`
-            : `Job card created by ${creatorName}`,
+          note: createNote,
         },
       },
     },

@@ -31,6 +31,8 @@ export const JOB_STATUSES = [
   "Pending",
   "WaitingForCustomerApproval",
   "Outsourced",
+  "WarrantyPending",
+  "WarrantyWithCompany",
   "Ready",
   "Return",
   "Delivered",
@@ -42,41 +44,82 @@ export const STATUS_LABELS: Record<string, string> = {
   Pending: "Pending",
   WaitingForCustomerApproval: "Waiting for Customer Approval",
   Outsourced: "Outsourced",
+  WarrantyPending: "Warranty (at store)",
+  WarrantyWithCompany: "Warranty (with company)",
   Ready: "Ready",
   Return: "Return",
   Delivered: "Delivered",
 };
 
+export const WARRANTY_STATUSES = [
+  "WarrantyPending",
+  "WarrantyWithCompany",
+] as const;
+
 export const ACTIVE_STATUSES = [
   "Pending",
   "WaitingForCustomerApproval",
   "Outsourced",
+  "WarrantyPending",
+  "WarrantyWithCompany",
   "Ready",
   "Return",
 ] as const;
 
 export type StaffRole = "reception" | "technician" | "admin";
 
+function isWarrantyStatus(status: string): boolean {
+  return (
+    status === "WarrantyPending" || status === "WarrantyWithCompany"
+  );
+}
+
 /** Flexible status selection — no strict sequential flow. */
 export function getSelectableStatuses(
   current: JobStatusValue,
-  role: StaffRole
+  role: StaffRole,
+  opts?: { isWarranty?: boolean }
 ): JobStatusValue[] {
   if (current === "Delivered") {
     if (role !== "admin") return [];
     return [...ACTIVE_STATUSES];
   }
 
-  if (current === "Outsourced") {
-    return role === "admin"
-      ? ["Ready", "Return", "Pending", "WaitingForCustomerApproval"]
-      : ["Ready", "Return"];
+  if (isWarrantyStatus(current)) {
+    if (role === "technician") {
+      return ["Ready", "Return"];
+    }
+    if (current === "WarrantyPending") {
+      return ["WarrantyWithCompany", "Ready", "Return"];
+    }
+    return ["WarrantyPending", "Ready", "Return"];
   }
 
-  const options = JOB_STATUSES.filter((s) => s !== current && s !== "Delivered");
+  if (current === "Outsourced") {
+    const outsourcedOptions: JobStatusValue[] =
+      role === "admin"
+        ? ["Ready", "Return", "Pending", "WaitingForCustomerApproval"]
+        : ["Ready", "Return"];
+    if (role !== "technician" && !opts?.isWarranty) {
+      return [...outsourcedOptions, "WarrantyPending"];
+    }
+    return outsourcedOptions;
+  }
+
+  const options = JOB_STATUSES.filter(
+    (s) =>
+      s !== current &&
+      s !== "Delivered" &&
+      !isWarrantyStatus(s)
+  );
 
   if (role === "technician") {
     return options;
+  }
+
+  // Customer may return next day with warranty proof — convert paid/out-of-warranty jobs
+  if (!opts?.isWarranty) {
+    return [...options, "WarrantyPending"];
   }
 
   return options;

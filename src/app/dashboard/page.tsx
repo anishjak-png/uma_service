@@ -19,9 +19,6 @@ export default async function DashboardPage() {
     redirect("/jobs/pending");
   }
 
-  const showAmountsToReception =
-    process.env.SHOW_AMOUNTS_TO_RECEPTION === "true";
-
   if (session.role === "admin") {
     const data = await getAdminDashboardData();
     return (
@@ -31,10 +28,10 @@ export default async function DashboardPage() {
     );
   }
 
-  const data = await getReceptionDashboardData(showAmountsToReception);
+  const data = await getReceptionDashboardData();
   return (
     <AppShell>
-      <ReceptionDashboard data={data} showAmounts={showAmountsToReception} />
+      <ReceptionDashboard data={data} />
     </AppShell>
   );
 }

@@ -14,7 +14,10 @@ export const jobListSelect = {
   serviceAmount: true,
   customer: { select: { id: true, mobile: true, name: true } },
   assignedTechnician: { select: { name: true } },
-  outsourcedTo: { select: { name: true } },
+  outsourcedTo: { select: { id: true, name: true } },
+  isWarranty: true,
+  warrantyPurchaseDate: true,
+  warrantyTakenAt: true,
 } satisfies Prisma.JobCardSelect;
 
 /** Fields returned by PATCH — client merges into existing job detail. */
@@ -32,6 +35,9 @@ export const jobPatchSelect = {
   completedByOutsource: { select: { id: true, name: true } },
   accessories: true,
   outsourcedAt: true,
+  isWarranty: true,
+  warrantyPurchaseDate: true,
+  warrantyTakenAt: true,
 } satisfies Prisma.JobCardSelect;
 
 export type JobListRow = Prisma.JobCardGetPayload<{ select: typeof jobListSelect }>;

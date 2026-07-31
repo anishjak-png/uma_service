@@ -1,5 +1,9 @@
 import { APP_URL, SHOP_NAME, SHOP_PHONE } from "./constants";
-import { formatMobileDisplay, parseAccessories } from "./jobs";
+import {
+  formatAccessoryLabel,
+  formatMobileDisplay,
+  parseAccessories,
+} from "./jobs";
 
 export interface ReceiptData {
   jobNumber: string;
@@ -40,7 +44,7 @@ export function buildReceiptData(job: {
     brand: job.brand,
     model: job.model,
     complaint: job.complaint,
-    accessories: parseAccessories(job.accessories),
+    accessories: parseAccessories(job.accessories).map(formatAccessoryLabel),
     statusUrl: `${APP_URL}/j/${encodeURIComponent(job.jobNumber)}`,
   };
 }

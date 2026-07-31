@@ -25,7 +25,35 @@ type JobResult = {
   deliveredAt?: string | null;
   serviceAmount?: number | null;
   customer: { mobile: string; name?: string | null };
+  outsourcedTo?: { id: string; name: string } | null;
+  isWarranty?: boolean;
+  warrantyTakenAt?: string | null;
 };
+
+type PartnerOption = { id: string; name: string };
+
+function isWarrantyJobStatus(status: string) {
+  return status === "WarrantyPending" || status === "WarrantyWithCompany";
+}
+
+function isWarrantyFilter(status: string) {
+  return status === "Warranty" || isWarrantyJobStatus(status);
+}
+
+function warrantyEmphasis(job: Pick<JobResult, "status" | "warrantyTakenAt">) {
+  if (job.status === "WarrantyWithCompany") {
+    return job.warrantyTakenAt
+      ? `With company · ${formatDateTime(job.warrantyTakenAt)}`
+      : "With company";
+  }
+  if (job.status === "WarrantyPending") return "At store";
+  return undefined;
+}
+
+function normalizeStatusFilter(status: string, warrantyOnly: boolean) {
+  if (warrantyOnly || isWarrantyFilter(status)) return "Warranty";
+  return status;
+}
 
 type CustomerInfo = {
   id: string;
@@ -53,6 +81,8 @@ const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "Pending", label: "Pending" },
   { value: "WaitingForCustomerApproval", label: "Waiting" },
+  { value: "Warranty", label: "Warranty" },
+  { value: "Outsourced", label: "Outsourced" },
   { value: "Ready", label: "Ready" },
   { value: "Return", label: "Return" },
   { value: "Delivered", label: "Delivered" },
@@ -74,10 +104,19 @@ export default function SearchContent() {
   const initialDeliveredPeriod = searchParams.get("deliveredPeriod") ?? "";
   const initialReadyPeriod = searchParams.get("readyPeriod") ?? "";
   const initialCompletedBy = searchParams.get("completedByTechnicianId") ?? "";
+  const initialOutsourcedToId = searchParams.get("outsourcedToId") ?? "";
+  const initialWarrantyBrand = searchParams.get("warrantyBrand") ?? "";
+  const initialWarrantyOnly = searchParams.get("warranty") === "true";
 
   const [query, setQuery] = useState(initialQ);
-  const [statusFilter, setStatusFilter] = useState(initialStatus);
+  const [statusFilter, setStatusFilter] = useState(
+    normalizeStatusFilter(initialStatus, initialWarrantyOnly)
+  );
   const [customerId, setCustomerId] = useState(initialCustomerId);
+  const [partnerFilter, setPartnerFilter] = useState(initialOutsourcedToId);
+  const [brandFilter, setBrandFilter] = useState(initialWarrantyBrand);
+  const [partners, setPartners] = useState<PartnerOption[]>([]);
+  const [warrantyBrands, setWarrantyBrands] = useState<string[]>([]);
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const { scope, setScope, ready: scopeReady } = useTechnicianJobScope();
@@ -100,6 +139,9 @@ export default function SearchContent() {
         deliveredPeriod?: string;
         readyPeriod?: string;
         completedByTechnicianId?: string;
+        outsourcedToId?: string;
+        warrantyBrand?: string;
+        warranty?: boolean;
       } = {}
     ) => {
       setLoading(true);
@@ -109,7 +151,13 @@ export default function SearchContent() {
       } else if (q.trim()) {
         params.set("q", q.trim());
       }
-      if (status !== "all") params.set("status", status);
+      if (status === "Warranty") {
+        params.set("warranty", "true");
+      } else if (status !== "all") {
+        params.set("status", status);
+      } else if (browse.warranty) {
+        params.set("warranty", "true");
+      }
       if (isTechnician) params.set("scope", jobScope);
       if (browse.technicianId) params.set("technicianId", browse.technicianId);
       if (browse.applianceType) params.set("applianceType", browse.applianceType);
@@ -121,6 +169,12 @@ export default function SearchContent() {
       if (browse.readyPeriod) params.set("readyPeriod", browse.readyPeriod);
       if (browse.completedByTechnicianId) {
         params.set("completedByTechnicianId", browse.completedByTechnicianId);
+      }
+      if (browse.outsourcedToId) {
+        params.set("outsourcedToId", browse.outsourcedToId);
+      }
+      if (browse.warrantyBrand) {
+        params.set("warrantyBrand", browse.warrantyBrand);
       }
 
       const res = await fetch(`/api/jobs/search?${params}`);
@@ -141,6 +195,9 @@ export default function SearchContent() {
     deliveredPeriod: initialDeliveredPeriod || undefined,
     readyPeriod: initialReadyPeriod || undefined,
     completedByTechnicianId: initialCompletedBy || undefined,
+    outsourcedToId: partnerFilter || undefined,
+    warrantyBrand: brandFilter || undefined,
+    warranty: initialWarrantyOnly || undefined,
   };
 
   const hasBrowseFilter = Boolean(
@@ -153,23 +210,45 @@ export default function SearchContent() {
       initialReceivedPeriod ||
       initialDeliveredPeriod ||
       initialReadyPeriod ||
-      initialCompletedBy
+      initialCompletedBy ||
+      partnerFilter ||
+      brandFilter ||
+      initialWarrantyOnly
   );
+
+  useEffect(() => {
+    if (!roleLoaded) return;
+    if (statusFilter !== "Outsourced" && !initialOutsourcedToId) return;
+    fetch("/api/outsource-partners")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setPartners(data);
+      })
+      .catch(() => setPartners([]));
+  }, [roleLoaded, statusFilter, initialOutsourcedToId]);
 
   useEffect(() => {
     if (!roleLoaded) return;
     if (role === "technician" && !scopeReady) return;
 
+    const nextStatus = normalizeStatusFilter(initialStatus, initialWarrantyOnly);
     setQuery(initialQ);
-    setStatusFilter(initialStatus);
+    setStatusFilter(nextStatus);
     setCustomerId(initialCustomerId);
+    setPartnerFilter(initialOutsourcedToId);
+    setBrandFilter(initialWarrantyBrand);
     search(
       initialQ,
-      initialStatus,
+      nextStatus,
       initialCustomerId,
       role === "technician" ? scope : "all",
       role === "technician",
-      browseParams
+      {
+        ...browseParams,
+        outsourcedToId: initialOutsourcedToId || undefined,
+        warrantyBrand: initialWarrantyBrand || undefined,
+        warranty: initialWarrantyOnly || undefined,
+      }
     );
   }, [
     initialQ,
@@ -184,6 +263,9 @@ export default function SearchContent() {
     initialDeliveredPeriod,
     initialReadyPeriod,
     initialCompletedBy,
+    initialOutsourcedToId,
+    initialWarrantyBrand,
+    initialWarrantyOnly,
     role,
     roleLoaded,
     scope,
@@ -191,7 +273,34 @@ export default function SearchContent() {
     search,
   ]);
 
-  function updateUrl(q: string, status: string, selectedCustomerId: string) {
+  useEffect(() => {
+    if (statusFilter !== "Warranty") return;
+    fetch("/api/jobs/search?warranty=true")
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data?.jobs) ? data.jobs : [];
+        const brands = Array.from(
+          new Set(
+            list
+              .map((j: JobResult) => j.brand)
+              .filter(
+                (b: unknown): b is string =>
+                  typeof b === "string" && b.length > 0
+              )
+          )
+        ).sort((a, b) => a.localeCompare(b));
+        setWarrantyBrands(brands);
+      })
+      .catch(() => setWarrantyBrands([]));
+  }, [statusFilter]);
+
+  function updateUrl(
+    q: string,
+    status: string,
+    selectedCustomerId: string,
+    outsourcedToId: string = partnerFilter,
+    warrantyBrand: string = brandFilter
+  ) {
     const params = new URLSearchParams();
     if (selectedCustomerId) {
       params.set("customerId", selectedCustomerId);
@@ -199,7 +308,11 @@ export default function SearchContent() {
     } else if (q.trim()) {
       params.set("q", q.trim());
     }
-    if (status !== "all") params.set("status", status);
+    if (status === "Warranty") {
+      params.set("warranty", "true");
+    } else if (status !== "all") {
+      params.set("status", status);
+    }
     if (initialTechnicianId) params.set("technicianId", initialTechnicianId);
     if (initialApplianceType) params.set("applianceType", initialApplianceType);
     if (initialBrand) params.set("brand", initialBrand);
@@ -209,13 +322,21 @@ export default function SearchContent() {
     if (initialDeliveredPeriod) params.set("deliveredPeriod", initialDeliveredPeriod);
     if (initialReadyPeriod) params.set("readyPeriod", initialReadyPeriod);
     if (initialCompletedBy) params.set("completedByTechnicianId", initialCompletedBy);
+    if (status === "Outsourced" && outsourcedToId) {
+      params.set("outsourcedToId", outsourcedToId);
+    }
+    if (status === "Warranty" && warrantyBrand) {
+      params.set("warrantyBrand", warrantyBrand);
+    }
     router.replace(`/jobs/search?${params.toString()}`, { scroll: false });
   }
 
   function runSearch(
     q: string,
     status: string,
-    selectedCustomerId: string = customerId
+    selectedCustomerId: string = customerId,
+    outsourcedToId: string = partnerFilter,
+    warrantyBrand: string = brandFilter
   ) {
     search(
       q,
@@ -223,14 +344,39 @@ export default function SearchContent() {
       selectedCustomerId,
       role === "technician" ? scope : "all",
       role === "technician",
-      browseParams
+      {
+        ...browseParams,
+        outsourcedToId:
+          status === "Outsourced" ? outsourcedToId || undefined : undefined,
+        warrantyBrand:
+          status === "Warranty" ? warrantyBrand || undefined : undefined,
+        warranty: status === "Warranty" || undefined,
+      }
     );
   }
 
   function applyFilter(status: string) {
+    const nextPartner = status === "Outsourced" ? partnerFilter : "";
+    const nextBrand = status === "Warranty" ? brandFilter : "";
     setStatusFilter(status);
-    updateUrl(query, status, customerId);
-    runSearch(query, status, customerId);
+    setPartnerFilter(nextPartner);
+    setBrandFilter(nextBrand);
+    updateUrl(query, status, customerId, nextPartner, nextBrand);
+    runSearch(query, status, customerId, nextPartner, nextBrand);
+  }
+
+  function applyPartnerFilter(partnerId: string) {
+    setPartnerFilter(partnerId);
+    setStatusFilter("Outsourced");
+    updateUrl(query, "Outsourced", customerId, partnerId, "");
+    runSearch(query, "Outsourced", customerId, partnerId, "");
+  }
+
+  function applyBrandFilter(brandName: string) {
+    setBrandFilter(brandName);
+    setStatusFilter("Warranty");
+    updateUrl(query, "Warranty", customerId, "", brandName);
+    runSearch(query, "Warranty", customerId, "", brandName);
   }
 
   function handleScopeChange(next: TechnicianJobScope) {
@@ -291,25 +437,98 @@ export default function SearchContent() {
         autoFocus
       />
 
-      {hasActiveSearch && (
+      {(hasActiveSearch || Boolean(role)) && (
         <div className="mb-3 flex flex-wrap gap-1.5">
           {hasBrowseFilter && !query.trim() && !customerId ? (
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
               Report filter — tap a job to open
             </span>
           ) : null}
-          {STATUS_FILTERS.map((f) => (
+          {STATUS_FILTERS.map((f) => {
+            const active = statusFilter === f.value;
+            const outsourced = f.value === "Outsourced";
+            const warranty = f.value === "Warranty";
+            return (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => applyFilter(f.value)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  active
+                    ? outsourced
+                      ? "bg-purple-600 text-white"
+                      : warranty
+                        ? "bg-sky-600 text-white"
+                        : "bg-emerald-600 text-white"
+                    : outsourced
+                      ? "bg-purple-50 text-purple-800 ring-1 ring-purple-200 hover:bg-purple-100"
+                      : warranty
+                        ? "bg-sky-50 text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100"
+                        : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {statusFilter === "Warranty" && warrantyBrands.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => applyBrandFilter("")}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              !brandFilter
+                ? "bg-sky-600 text-white"
+                : "bg-white text-sky-800 ring-1 ring-sky-200"
+            }`}
+          >
+            All brands
+          </button>
+          {warrantyBrands.map((brandName) => (
             <button
-              key={f.value}
+              key={brandName}
               type="button"
-              onClick={() => applyFilter(f.value)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === f.value
-                  ? "bg-emerald-600 text-white"
-                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+              onClick={() => applyBrandFilter(brandName)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                brandFilter === brandName
+                  ? "bg-sky-600 text-white"
+                  : "bg-sky-50 text-sky-800 ring-1 ring-sky-200"
               }`}
             >
-              {f.label}
+              {brandName}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {statusFilter === "Outsourced" && partners.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => applyPartnerFilter("")}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              !partnerFilter
+                ? "bg-purple-600 text-white"
+                : "bg-white text-purple-800 ring-1 ring-purple-200"
+            }`}
+          >
+            All partners
+          </button>
+          {partners.map((partner) => (
+            <button
+              key={partner.id}
+              type="button"
+              onClick={() => applyPartnerFilter(partner.id)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                partnerFilter === partner.id
+                  ? "bg-purple-600 text-white"
+                  : "bg-purple-50 text-purple-800 ring-1 ring-purple-200"
+              }`}
+            >
+              {partner.name}
             </button>
           ))}
         </div>
@@ -357,7 +576,14 @@ export default function SearchContent() {
           complaint={jobs[0].complaint}
           serviceAmount={jobs[0].serviceAmount}
           showServiceAmount={showAmounts}
+          emphasis={warrantyEmphasis(jobs[0])}
           meta={[
+            isWarrantyJobStatus(jobs[0].status) && jobs[0].brand
+              ? jobs[0].brand
+              : null,
+            jobs[0].status === "Outsourced" && jobs[0].outsourcedTo
+              ? `With ${jobs[0].outsourcedTo.name}`
+              : null,
             `Received ${formatDateTime(jobs[0].receivedAt)}`,
             jobs[0].readyAt ? `Done ${formatDateTime(jobs[0].readyAt)}` : null,
             jobs[0].deliveredAt ? `Delivered ${formatDateTime(jobs[0].deliveredAt)}` : null,
@@ -394,7 +620,18 @@ export default function SearchContent() {
               complaint={job.complaint}
               serviceAmount={job.serviceAmount}
               showServiceAmount={showAmounts}
-              meta={`Received ${formatDateTime(job.receivedAt)}`}
+              emphasis={warrantyEmphasis(job)}
+              meta={[
+                isWarrantyJobStatus(job.status) && job.brand
+                  ? job.brand
+                  : null,
+                job.status === "Outsourced" && job.outsourcedTo
+                  ? `With ${job.outsourcedTo.name}`
+                  : null,
+                `Received ${formatDateTime(job.receivedAt)}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             />
           ))}
         </div>
@@ -412,7 +649,18 @@ export default function SearchContent() {
               complaint={job.complaint}
               serviceAmount={job.serviceAmount}
               showServiceAmount={showAmounts}
-              meta={`Received ${formatDateTime(job.receivedAt)}`}
+              emphasis={warrantyEmphasis(job)}
+              meta={[
+                isWarrantyJobStatus(job.status) && job.brand
+                  ? job.brand
+                  : null,
+                job.status === "Outsourced" && job.outsourcedTo
+                  ? `With ${job.outsourcedTo.name}`
+                  : null,
+                `Received ${formatDateTime(job.receivedAt)}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             />
           ))}
         </div>

@@ -44,6 +44,9 @@ async function browseJobsResponse(params: {
   deliveredPeriod: ReportPeriod | null;
   readyPeriod: ReportPeriod | null;
   completedByTechnicianId: string | null;
+  outsourcedToId: string | null;
+  warrantyBrand: string | null;
+  warrantyOnly: boolean;
 }) {
   const {
     session,
@@ -58,6 +61,9 @@ async function browseJobsResponse(params: {
     deliveredPeriod,
     readyPeriod,
     completedByTechnicianId,
+    outsourcedToId,
+    warrantyBrand,
+    warrantyOnly,
   } = params;
 
   if (!session.isLoggedIn) {
@@ -68,6 +74,9 @@ async function browseJobsResponse(params: {
 
   if (status && status !== "all") {
     where.status = status as JobStatus;
+  } else if (warrantyOnly) {
+    where.status = { in: ["WarrantyPending", "WarrantyWithCompany"] };
+    where.isWarranty = true;
   } else if (activeOnly) {
     where.status = { in: [...ACTIVE_STATUSES] };
   }
@@ -80,11 +89,20 @@ async function browseJobsResponse(params: {
     where.completedByTechnicianId = completedByTechnicianId;
   }
 
+  if (outsourcedToId) {
+    where.outsourcedToId = outsourcedToId;
+  }
+
+  if (warrantyBrand) {
+    where.brand = warrantyBrand;
+    where.isWarranty = true;
+  }
+
   if (applianceType) {
     where.applianceType = applianceType;
   }
 
-  if (brand) {
+  if (brand && !warrantyBrand) {
     where.brand = brand;
   }
 
@@ -143,6 +161,9 @@ export async function GET(request: NextRequest) {
   const deliveredPeriod = parseReportPeriod(searchParams.get("deliveredPeriod"));
   const readyPeriod = parseReportPeriod(searchParams.get("readyPeriod"));
   const completedByTechnicianId = searchParams.get("completedByTechnicianId");
+  const outsourcedToId = searchParams.get("outsourcedToId");
+  const warrantyBrand = searchParams.get("warrantyBrand")?.trim() || null;
+  const warrantyOnly = searchParams.get("warranty") === "true";
 
   const scopeWhere = technicianScopeWhere(session, scopeParam);
   const hasBrowseFilter = Boolean(
@@ -155,7 +176,10 @@ export async function GET(request: NextRequest) {
       receivedPeriod ||
       deliveredPeriod ||
       readyPeriod ||
-      completedByTechnicianId
+      completedByTechnicianId ||
+      outsourcedToId ||
+      warrantyBrand ||
+      warrantyOnly
   );
 
   if (!q && !customerId && hasBrowseFilter) {
@@ -172,15 +196,35 @@ export async function GET(request: NextRequest) {
       deliveredPeriod,
       readyPeriod,
       completedByTechnicianId,
+      outsourcedToId,
+      warrantyBrand,
+      warrantyOnly,
     });
   }
 
   const statusWhere =
     status && status !== "all" ? { status: status as JobStatus } : {};
+  const outsourceWhere = outsourcedToId ? { outsourcedToId } : {};
+  const warrantyWhere = warrantyBrand
+    ? { brand: warrantyBrand, isWarranty: true }
+    : warrantyOnly
+      ? {
+          isWarranty: true,
+          status: {
+            in: ["WarrantyPending", "WarrantyWithCompany"] as JobStatus[],
+          },
+        }
+      : {};
 
   async function jobsForCustomer(id: string) {
     return prisma.jobCard.findMany({
-      where: { customerId: id, ...scopeWhere, ...statusWhere },
+      where: {
+        customerId: id,
+        ...scopeWhere,
+        ...statusWhere,
+        ...outsourceWhere,
+        ...warrantyWhere,
+      },
       select: jobListSelect,
       orderBy: { receivedAt: "desc" },
     });
@@ -260,7 +304,13 @@ export async function GET(request: NextRequest) {
   if (searchType === "ut") {
     const jobNumber = normalizeJobNumberQuery(q);
     const job = await prisma.jobCard.findFirst({
-      where: { jobNumber, ...scopeWhere, ...statusWhere },
+      where: {
+        jobNumber,
+        ...scopeWhere,
+        ...statusWhere,
+        ...outsourceWhere,
+        ...warrantyWhere,
+      },
       select: jobListSelect,
     });
     return NextResponse.json({
