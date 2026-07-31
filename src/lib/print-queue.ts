@@ -5,6 +5,19 @@ const DEFAULT_BRANCH_ID = process.env.PRINT_BRANCH_ID?.trim() || "main";
 const DEFAULT_PRINTER_ID = process.env.PRINT_PRINTER_ID?.trim() || "counter-1";
 
 export async function enqueueReceiptPrint(jobCardId: string) {
+  const existing = await prisma.printJob.findFirst({
+    where: {
+      jobCardId,
+      type: "receipt",
+      status: { in: ["Pending", "Printing"] },
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return prisma.printJob.findUniqueOrThrow({ where: { id: existing.id } });
+  }
+
   return prisma.printJob.create({
     data: {
       jobCardId,

@@ -5,12 +5,12 @@ import { LanPrinter } from "./printer";
 import { buildReceiptBuffer } from "./receipt";
 import type { JobCardRow, PrintJobRow, QueuedPrintJob } from "./types";
 
-type JobHandler = (job: PrintJobRow) => void;
-
 export class PrintQueueManager {
   private readonly processedIds = new Set<string>();
+  private readonly inFlightIds = new Set<string>();
   private readonly queue: QueuedPrintJob[] = [];
   private processing = false;
+  private syncing = false;
 
   constructor(
     private readonly supabase: SupabaseClient,
@@ -20,11 +20,6 @@ export class PrintQueueManager {
 
   /** Called by RealtimeManager when a new INSERT passes filters. */
   enqueueFromEvent(row: PrintJobRow, jobNumber?: string): void {
-    if (this.processedIds.has(row.id)) {
-      log.duplicateIgnored(row.id);
-      return;
-    }
-
     if (row.status !== "Pending") {
       log.skipped(row.id, `status is ${row.status}`);
       return;
@@ -40,33 +35,31 @@ export class PrintQueueManager {
       return;
     }
 
-    if (this.queue.some((item) => item.id === row.id)) {
-      log.duplicateIgnored(row.id);
-      return;
+    this.tryEnqueue(row.id, jobNumber ?? row.id);
+  }
+
+  private tryEnqueue(id: string, jobNumber: string): boolean {
+    if (this.processedIds.has(id) || this.inFlightIds.has(id)) {
+      log.duplicateIgnored(id);
+      return false;
     }
 
-    this.queue.push({ id: row.id, jobNumber: jobNumber ?? row.id });
+    if (this.queue.some((item) => item.id === id)) {
+      log.duplicateIgnored(id);
+      return false;
+    }
+
+    this.queue.push({ id, jobNumber });
     void this.drain();
+    return true;
   }
 
-  /** Safety net if Realtime misses an INSERT (e.g. brief disconnect). Not HTTP polling. */
-  startPeriodicSync(intervalMs = 15_000): void {
-    this.syncTimer = setInterval(() => {
-      void this.syncMissedJobs();
-    }, intervalMs);
-  }
-
-  stopPeriodicSync(): void {
-    if (this.syncTimer) {
-      clearInterval(this.syncTimer);
-      this.syncTimer = null;
-    }
-  }
-
-  private syncTimer: ReturnType<typeof setInterval> | null = null;
-
-  /** Fetch missed pending jobs after reconnect — FIFO, no polling loop. */
+  /** Fetch missed pending jobs after reconnect — FIFO, not a poll loop. */
   async syncMissedJobs(): Promise<void> {
+    if (this.syncing) return;
+    this.syncing = true;
+
+    try {
     const { data, error } = await this.supabase
       .from("PrintJob")
       .select("id, jobCardId, type, status, branchId, printerId, attempts, errorMessage, createdAt, printedAt")
@@ -84,15 +77,14 @@ export class PrintQueueManager {
     let added = 0;
 
     for (const row of rows) {
-      if (this.processedIds.has(row.id)) continue;
-      if (this.queue.some((item) => item.id === row.id)) continue;
-      this.queue.push({ id: row.id, jobNumber: row.id });
-      added++;
+      if (this.tryEnqueue(row.id, row.id)) added++;
     }
 
     if (added > 0) {
       log.missedSynced(added);
-      void this.drain();
+    }
+    } finally {
+      this.syncing = false;
     }
   }
 
@@ -115,10 +107,12 @@ export class PrintQueueManager {
   }
 
   private async processJob(id: string): Promise<void> {
-    if (this.processedIds.has(id)) {
+    if (this.processedIds.has(id) || this.inFlightIds.has(id)) {
       log.duplicateIgnored(id);
       return;
     }
+
+    this.inFlightIds.add(id);
 
     const { data: printJob, error: jobError } = await this.supabase
       .from("PrintJob")
@@ -128,6 +122,7 @@ export class PrintQueueManager {
 
     if (jobError || !printJob) {
       console.error(`Could not load PrintJob ${id}:`, jobError?.message);
+      this.inFlightIds.delete(id);
       return;
     }
 
@@ -136,11 +131,28 @@ export class PrintQueueManager {
     if (row.status !== "Pending") {
       log.skipped(id, `status is ${row.status}`);
       this.processedIds.add(id);
+      this.inFlightIds.delete(id);
       return;
     }
 
     if (row.branchId !== this.config.branchId || row.printerId !== this.config.printerId) {
       log.skipped(id, "branch/printer mismatch");
+      this.inFlightIds.delete(id);
+      return;
+    }
+
+    const { data: claimed, error: claimError } = await this.supabase
+      .from("PrintJob")
+      .update({ status: "Printing", attempts: row.attempts + 1 })
+      .eq("id", id)
+      .eq("status", "Pending")
+      .select("id")
+      .maybeSingle();
+
+    if (claimError || !claimed) {
+      log.skipped(id, claimError?.message ?? "already claimed by another bridge");
+      this.processedIds.add(id);
+      this.inFlightIds.delete(id);
       return;
     }
 
@@ -152,6 +164,8 @@ export class PrintQueueManager {
 
     if (cardError || !jobCard) {
       await this.markFailed(id, cardError?.message ?? "Job card not found");
+      this.processedIds.add(id);
+      this.inFlightIds.delete(id);
       return;
     }
 
@@ -159,12 +173,6 @@ export class PrintQueueManager {
     const customer = Array.isArray(raw.Customer) ? raw.Customer[0] : raw.Customer;
     const card: JobCardRow = { ...raw, Customer: customer ?? null };
     log.printing(card.jobNumber);
-
-    await this.supabase
-      .from("PrintJob")
-      .update({ status: "Printing", attempts: row.attempts + 1 })
-      .eq("id", id)
-      .eq("status", "Pending");
 
     try {
       const buffer = buildReceiptBuffer(card, this.config);
@@ -177,6 +185,8 @@ export class PrintQueueManager {
       await this.markFailed(id, message);
       this.processedIds.add(id);
       log.failed(card.jobNumber, message);
+    } finally {
+      this.inFlightIds.delete(id);
     }
   }
 

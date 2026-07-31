@@ -44,11 +44,9 @@ async function main() {
   const realtime = new RealtimeManager(config, supabase, queue);
 
   realtime.start();
-  queue.startPeriodicSync();
 
   const shutdown = () => {
     console.log("Print Bridge stopping…");
-    queue.stopPeriodicSync();
     realtime.stop();
     process.exit(0);
   };

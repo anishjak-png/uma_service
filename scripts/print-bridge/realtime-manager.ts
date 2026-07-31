@@ -51,13 +51,15 @@ export class RealtimeManager {
           console.log(`Realtime channel status: ${status}${err ? ` — ${err.message}` : ""}`);
         }
         if (status === "SUBSCRIBED") {
-          if (this.connected) {
+          const wasConnected = this.connected;
+          if (wasConnected) {
             log.realtimeReconnected();
+            void this.queue.syncMissedJobs();
           } else {
             log.realtimeConnected();
+            setTimeout(() => void this.queue.syncMissedJobs(), 5000);
           }
           this.connected = true;
-          void this.queue.syncMissedJobs();
           return;
         }
 
