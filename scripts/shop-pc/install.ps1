@@ -32,11 +32,27 @@ function Ensure-Node {
   $node = Get-Command node -ErrorAction SilentlyContinue
   if (-not $node) {
     Write-Host ""
-    Write-Host "Node.js is required. Install from https://nodejs.org (LTS 20+)" -ForegroundColor Red
+    Write-Host "Node.js is required. Install LTS 20+ from https://nodejs.org (64-bit)" -ForegroundColor Red
     Write-Host "Then run this installer again." -ForegroundColor Red
     exit 1
   }
-  Write-Host "Node $(node -v)" -ForegroundColor DarkGray
+
+  $versionText = (node -v).TrimStart("v")
+  $major = [int]($versionText.Split(".")[0])
+  if ($major -lt 20) {
+    Write-Host ""
+    Write-Host "Node.js v$versionText is TOO OLD. Print bridge requires Node 20 or newer." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Fix on this PC:" -ForegroundColor Yellow
+    Write-Host "  1. Settings -> Apps -> uninstall old Node.js" -ForegroundColor Yellow
+    Write-Host "  2. Install current LTS from https://nodejs.org (64-bit, not x86)" -ForegroundColor Yellow
+    Write-Host "  3. Open a NEW Command Prompt and check: node -v  (must show v20+)" -ForegroundColor Yellow
+    Write-Host "  4. Run INSTALL.bat again" -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+  }
+
+  Write-Host "Node v$versionText OK" -ForegroundColor Green
 }
 
 function Ensure-Project {
@@ -162,6 +178,14 @@ try {
   Write-Step "Installing npm packages (may take a few minutes)"
   Set-Location $root
   npm install
+  if ($LASTEXITCODE -ne 0) {
+    throw "npm install failed - see errors above. Fix Node.js (20+) and try again."
+  }
+
+  $tsx = Join-Path $root "node_modules\.bin\tsx.cmd"
+  if (-not (Test-Path $tsx)) {
+    throw "Install incomplete (tsx missing). Upgrade Node.js to 20+ and run INSTALL.bat again."
+  }
 
   Ensure-EnvFile -Root $root
   Save-ShopPcConfig -ProjectPath $root
