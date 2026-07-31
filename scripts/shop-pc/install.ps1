@@ -39,17 +39,8 @@ function Ensure-Node {
   Write-Host "Node $(node -v)" -ForegroundColor DarkGray
 }
 
-function Ensure-Git {
-  $git = Get-Command git -ErrorAction SilentlyContinue
-  if (-not $git) {
-    Write-Host ""
-    Write-Host "Git is required. Install from https://git-scm.com/download/win" -ForegroundColor Red
-    exit 1
-  }
-}
-
 function Ensure-Project {
-  param([string]$TargetPath, [string]$RepoUrl)
+  param([string]$TargetPath)
 
   if ($ProjectPath) {
     if (-not (Test-Path $ProjectPath)) {
@@ -64,31 +55,19 @@ function Ensure-Project {
     $pkg = Join-Path $candidate "package.json"
     if ((Test-Path $pkg) -and (Select-String -Path $pkg -Pattern "print-bridge" -Quiet)) {
       Write-Step "Using existing project folder"
-      Set-Location $candidate
-      git pull --ff-only 2>$null
       return $candidate
     }
   }
 
   $repoDir = Join-Path $TargetPath "uma_service"
 
-  if (Test-Path (Join-Path $repoDir ".git")) {
-    Write-Step "Updating existing repo"
-    Set-Location $repoDir
-    git pull --ff-only
+  if (Test-Path (Join-Path $repoDir "package.json")) {
+    Write-Step "Project already installed"
     return (Resolve-Path $repoDir).Path
   }
 
-  if (Test-Path $repoDir) {
-    throw "Folder exists but is not a git repo: $repoDir"
-  }
-
-  Write-Step "Cloning uma_service"
-  if (-not (Test-Path $TargetPath)) {
-    New-Item -ItemType Directory -Path $TargetPath -Force | Out-Null
-  }
-  git clone $RepoUrl $repoDir
-  return (Resolve-Path $repoDir).Path
+  Write-Step "Downloading uma_service from GitHub (no Git login)"
+  return Install-ProjectFromZip -InstallDir $TargetPath -RepoDir $repoDir
 }
 
 function Ensure-EnvFile {
@@ -176,10 +155,9 @@ Write-Host "  Uma Traders - Print Bridge Installer" -ForegroundColor Green
 Write-Host "  ====================================" -ForegroundColor Green
 
 Ensure-Node
-Ensure-Git
 
 try {
-  $root = Ensure-Project -TargetPath $InstallDir -RepoUrl $script:ShopPcRepoUrl
+  $root = Ensure-Project -TargetPath $InstallDir
 
   Write-Step "Installing npm packages (may take a few minutes)"
   Set-Location $root

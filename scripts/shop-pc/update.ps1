@@ -1,4 +1,4 @@
-# Administrator manual update - git pull + npm install. Not run on login.
+# Administrator manual update - download latest + npm install. Not run on login.
 . "$PSScriptRoot\config.ps1"
 
 $ErrorActionPreference = "Stop"
@@ -7,11 +7,12 @@ $config = Get-ShopPcConfig
 if ($config -and $config.projectPath -and (Test-Path $config.projectPath)) {
   $projectRoot = $config.projectPath
 } else {
-  $projectRoot = Get-ProjectRootFromScript -ScriptRoot $PSScriptRoot
-  Save-ShopPcConfig -ProjectPath $projectRoot
+  $projectRoot = Join-Path (Join-Path $env:USERPROFILE "UmaService") "uma_service"
+  if (-not (Test-Path $projectRoot)) {
+    Write-Error "Print bridge not installed. Run INSTALL.bat first."
+    exit 1
+  }
 }
-
-Set-Location $projectRoot
 
 Write-Host ""
 Write-Host "  Uma Traders - Print Bridge Update" -ForegroundColor Green
@@ -25,12 +26,10 @@ if ($running) {
   Start-Sleep -Seconds 2
 }
 
-Write-Host "git pull..." -ForegroundColor Cyan
-git pull --ff-only
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "git pull failed - fix network or conflicts before retrying." -ForegroundColor Red
-  exit 1
-}
+Write-Host "Downloading latest code..." -ForegroundColor Cyan
+Update-ProjectFromZip -RepoDir $projectRoot
+
+Set-Location $projectRoot
 
 Write-Host "npm install..." -ForegroundColor Cyan
 npm install
@@ -45,6 +44,8 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host "prisma generate failed." -ForegroundColor Red
   exit 1
 }
+
+Save-ShopPcConfig -ProjectPath $projectRoot
 
 Write-Host ""
 Write-Host "Update complete. Restarting print bridge..." -ForegroundColor Green

@@ -2,40 +2,29 @@
 
 ## One-time setup (your team)
 
-Double-click **`INSTALL.bat`** once.
+Double-click INSTALL.bat once.
 
-Requires **Node.js 20+** and **Git**. The installer will:
-- Clone/update the project
-- Run `npm install`
-- Create `.env` (opens Notepad for Supabase + printer IP)
-- Register **auto-start on Windows login**
-- Start the bridge immediately
+Requires Node.js 20+ only. Git is NOT required. No GitHub login.
 
-**No daily steps.** Bridge starts within seconds of login.
+The installer downloads the app as a ZIP from GitHub.
 
 ## Administrator updates only
 
-Double-click **`Update-PrintBridge.bat`** when deploying new versions:
-- `git pull`
-- `npm install`
-- Restarts the bridge
-
-Never run updates on every login — printing must start instantly.
+Double-click Update-PrintBridge.bat when deploying new versions.
 
 ## Other files
 
 | File | Purpose |
 |------|---------|
-| `START-NOW.bat` | Manual start |
-| `Update-PrintBridge.bat` | Admin: pull updates |
-| `Uninstall-PrintBridge.bat` | Remove auto-start |
+| START-NOW.bat | Manual start |
+| Update-PrintBridge.bat | Admin: download updates |
+| Uninstall-PrintBridge.bat | Remove auto-start |
 
 ## Health dashboard
 
-While running: **http://localhost:3005**
+http://localhost:3005
 
-Shows Realtime/Supabase/printer status, queue length, last print, errors.
+## If download fails
 
-## Logs
-
-`logs/print-bridge.log` — automatically rotated (keeps last 7 files).
+The GitHub repo must be public, OR copy the full uma_service folder via USB to:
+  C:\Users\<name>\UmaService\uma_service
