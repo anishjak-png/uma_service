@@ -14,6 +14,7 @@ Mobile-first job card management for home appliance repair service.
 - Customer signature on delivery
 - Public customer status page at `/j/[jobNumber]`
 - PIN-based staff login (Reception / Technician / Admin)
++ Mobile + password staff login with admin device approval
 - Admin: technicians, customers, billing reports
 
 ## Quick Start
@@ -33,13 +34,14 @@ Open [http://localhost:3000](http://localhost:3000)
 
 Full Supabase setup: **[docs/SUPABASE.md](docs/SUPABASE.md)**
 
-### Default PINs (change before production)
+### Staff login (seed + Vercel env)
 
-| Role | PIN |
-|------|-----|
-| Reception | 1234 |
-| Technician | 5678 |
-| Admin | 9999 |
+| Variable | Purpose |
+|----------|---------|
+| `ADMIN_MOBILE` | 10-digit mobile for first admin account (seed) |
+| `ADMIN_PASSWORD` | Password for first admin account (seed) |
+
+After deploy, admin logs in on phone → first device auto-approves. Admin creates other staff in **Admin → Staff** and approves devices in **Admin → Devices**.
 
 ## Environment Variables
 
@@ -48,7 +50,7 @@ Full Supabase setup: **[docs/SUPABASE.md](docs/SUPABASE.md)**
 | `DATABASE_URL` | Supabase pooler URL (port 6543) — app runtime |
 | `DIRECT_URL` | Supabase direct URL (port 5432) — schema push / seed |
 | `SESSION_SECRET` | Min 32 characters |
-| `RECEPTION_PIN`, `TECHNICIAN_PIN`, `ADMIN_PIN` | Staff login |
+| `ADMIN_MOBILE`, `ADMIN_PASSWORD` | Bootstrap admin (seed + first login) |
 | `NEXT_PUBLIC_APP_URL` | Public app URL (QR on receipts) |
 | `NEXT_PUBLIC_SHOP_NAME`, `NEXT_PUBLIC_SHOP_PHONE` | Receipt / UI |
 | `PRINT_AGENT_API_KEY` | LAN print agent auth (optional) |
@@ -66,6 +68,12 @@ Full Supabase setup: **[docs/SUPABASE.md](docs/SUPABASE.md)**
 Windows **Print Bridge** on shop PC uses **Supabase Realtime** (instant, no polling).
 
 See [docs/PRINT_SETUP.md](docs/PRINT_SETUP.md).
+
+## Staff Android app (APK)
+
+Share a installable app with reception/technician phones — loads the live cloud site.
+
+See **[docs/STAFF_APK.md](docs/STAFF_APK.md)** — build with `scripts/android/BUILD-APK.bat` (requires Android Studio).
 
 ## Daily Workflow
 

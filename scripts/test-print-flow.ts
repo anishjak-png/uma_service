@@ -6,13 +6,27 @@
  */
 
 const APP_URL = process.env.PRINT_AGENT_APP_URL ?? "http://localhost:3000";
-const RECEPTION_PIN = process.env.RECEPTION_PIN ?? "1234";
+const STAFF_MOBILE = process.env.RECEPTION_MOBILE ?? process.env.ADMIN_MOBILE ?? "";
+const STAFF_PASSWORD = process.env.RECEPTION_PASSWORD ?? process.env.ADMIN_PASSWORD ?? "";
+const TEST_DEVICE_ID = process.env.TEST_DEVICE_ID ?? "test-script-device";
 
 async function main() {
+  if (!STAFF_MOBILE || !STAFF_PASSWORD) {
+    throw new Error(
+      "Set RECEPTION_MOBILE + RECEPTION_PASSWORD (or ADMIN_*) in .env for print test login"
+    );
+  }
+
   const loginRes = await fetch(`${APP_URL}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: RECEPTION_PIN }),
+    body: JSON.stringify({
+      mobile: STAFF_MOBILE,
+      password: STAFF_PASSWORD,
+      deviceId: TEST_DEVICE_ID,
+      deviceLabel: "Print test script",
+      platform: "web",
+    }),
   });
   if (!loginRes.ok) {
     throw new Error(`Login failed: ${loginRes.status} ${await loginRes.text()}`);

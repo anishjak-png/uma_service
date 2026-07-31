@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { hashPassword, normalizeMobile } from "../src/lib/password";
 
 const prisma = new PrismaClient();
 
@@ -268,6 +269,32 @@ async function main() {
     update: {},
     create: { id: 1, lastNum: 0 },
   });
+
+  const adminMobile = process.env.ADMIN_MOBILE?.trim();
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  if (adminMobile && adminPassword) {
+    const mobile = normalizeMobile(adminMobile);
+    const passwordHash = await hashPassword(adminPassword);
+    await prisma.staffUser.upsert({
+      where: { mobile },
+      update: {
+        name: "Admin",
+        role: "admin",
+        active: true,
+        passwordHash,
+      },
+      create: {
+        mobile,
+        name: "Admin",
+        role: "admin",
+        active: true,
+        passwordHash,
+      },
+    });
+    console.log("Admin staff user seeded for mobile:", mobile);
+  } else {
+    console.warn("ADMIN_MOBILE and ADMIN_PASSWORD not set — skip admin staff seed");
+  }
 
   console.log("Seed completed — product types:", APPLIANCES.join(", "));
 }

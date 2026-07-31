@@ -43,7 +43,62 @@ model Technician {
   assignedJobs      JobCard[]             @relation("AssignedTechnician")
   completedJobs     JobCard[]             @relation("CompletedByTechnician")
   applianceMappings ApplianceTechnician[]
+  staffUsers        StaffUser[]
   createdAt         DateTime              @default(now())
+}
+
+enum StaffRole {
+  reception
+  technician
+  admin
+}
+
+enum DevicePlatform {
+  android
+  web
+}
+
+enum DeviceStatus {
+  pending
+  approved
+  revoked
+}
+
+model StaffUser {
+  id              String        @id @default(cuid())
+  mobile          String        @unique
+  passwordHash    String
+  name            String
+  role            StaffRole
+  active          Boolean       @default(true)
+  technicianId    String?
+  technician      Technician?   @relation(fields: [technicianId], references: [id], onDelete: SetNull)
+  devices         StaffDevice[] @relation("StaffDevices")
+  approvedDevices StaffDevice[] @relation("ApprovedByStaff")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([role])
+  @@index([technicianId])
+}
+
+model StaffDevice {
+  id           String         @id @default(cuid())
+  staffUserId  String
+  staffUser    StaffUser      @relation("StaffDevices", fields: [staffUserId], references: [id], onDelete: Cascade)
+  deviceId     String
+  deviceLabel  String?
+  platform     DevicePlatform
+  status       DeviceStatus   @default(pending)
+  lastSeenAt   DateTime       @default(now())
+  approvedAt   DateTime?
+  approvedById String?
+  approvedBy   StaffUser?     @relation("ApprovedByStaff", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime       @default(now())
+
+  @@unique([staffUserId, deviceId])
+  @@index([status])
+  @@index([staffUserId])
 }
 
 model ApplianceTechnician {

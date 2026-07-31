@@ -5,6 +5,7 @@ import { SHOP_NAME } from "@/lib/constants";
 import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { getDeviceIdentity } from "@/lib/device-identity";
 import {
   Card,
   CardContent,
@@ -15,7 +16,8 @@ import {
 export default function LoginPage() {
   const router = useRouter();
   const { refreshAuth } = useAuth();
-  const [pin, setPin] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,26 +26,49 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    const identity = await getDeviceIdentity();
+
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pin }),
+      body: JSON.stringify({
+        mobile,
+        password,
+        deviceId: identity.deviceId,
+        deviceLabel: identity.deviceLabel,
+        platform: identity.platform,
+      }),
     });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 403 && data.error === "device_pending") {
+      await refreshAuth();
+      setLoading(false);
+      router.push("/device-pending");
+      router.refresh();
+      return;
+    }
+
+    if (res.status === 403 && data.error === "device_revoked") {
+      setError("This device was revoked. Contact admin.");
+      setLoading(false);
+      return;
+    }
 
     if (!res.ok) {
       if (res.status === 401) {
-        setError("Invalid PIN. Try again.");
+        setError("Invalid mobile or password.");
       } else {
-        setError("Sign-in failed. Please refresh the page and try again.");
+        setError(data.error ?? "Sign-in failed. Please try again.");
       }
       setLoading(false);
       return;
     }
 
-    const data = await res.json();
     await refreshAuth();
     setLoading(false);
-    router.push(data.role === "technician" ? "/technician/select" : "/dashboard");
+    router.push(data.role === "technician" ? "/jobs/pending" : "/dashboard");
     router.refresh();
   }
 
@@ -58,21 +83,40 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label
-                htmlFor="pin"
+                htmlFor="mobile"
                 className="text-sm font-medium text-slate-700"
               >
-                Staff PIN
+                Mobile number
               </label>
               <input
-                id="pin"
-                type="password"
+                id="mobile"
+                type="tel"
                 inputMode="numeric"
-                maxLength={8}
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="Enter PIN"
-                className="flex h-14 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-center text-2xl tracking-widest placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                autoComplete="username"
+                maxLength={10}
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value.replace(/\D/g, ""))}
+                placeholder="10-digit mobile"
+                className="flex h-12 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-lg tracking-wide placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="password"
+                className="text-sm font-medium text-slate-700"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="flex h-12 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-lg placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
@@ -80,15 +124,15 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || !pin}
-              className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
+              disabled={loading || !mobile || !password}
+              className="inline-flex h-12 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
             >
               {loading ? "Signing in…" : "Sign In"}
             </button>
           </form>
 
           <p className="mt-4 text-center text-xs text-slate-400">
-            Reception · Technician · Admin
+            New device? Admin must approve after first login.
           </p>
           <p className="mt-3 text-center text-sm">
             <Link href="/track" className="font-medium text-emerald-700 hover:underline">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { getSession, isDeviceApproved } from "@/lib/session";
 
-const publicPaths = ["/", "/j", "/track", "/api/auth/login", "/technician/select"];
+const publicPaths = ["/", "/j", "/track", "/api/auth/login", "/device-pending"];
 const publicPrefixes = ["/j/", "/api/track"];
 
 function isPublic(pathname: string): boolean {
@@ -32,6 +32,24 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  if (!isDeviceApproved(session)) {
+    const allowedWhilePending =
+      pathname === "/device-pending" ||
+      pathname === "/api/auth/me" ||
+      pathname === "/api/auth/logout";
+
+    if (pathname.startsWith("/api/") && !allowedWhilePending) {
+      return NextResponse.json(
+        { error: "device_pending", deviceStatus: session.deviceStatus },
+        { status: 403 }
+      );
+    }
+
+    if (!allowedWhilePending && !pathname.startsWith("/api/")) {
+      return NextResponse.redirect(new URL("/device-pending", request.url));
+    }
   }
 
   if (session.role === "technician") {

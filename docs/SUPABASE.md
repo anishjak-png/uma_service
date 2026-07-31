@@ -58,7 +58,7 @@ Local dev uses the **same Supabase database** as production unless you create a 
    | `DATABASE_URL` | Supabase pooler (6543) |
    | `DIRECT_URL` | Supabase direct (5432) — needed for build if you add migrate step |
    | `SESSION_SECRET` | Random 32+ characters |
-   | `RECEPTION_PIN`, `TECHNICIAN_PIN`, `ADMIN_PIN` | **Change defaults** |
+   | `ADMIN_MOBILE`, `ADMIN_PASSWORD` | Bootstrap admin account (seed + first login) |
    | `NEXT_PUBLIC_APP_URL` | `https://your-app.vercel.app` |
    | `NEXT_PUBLIC_SHOP_NAME`, `NEXT_PUBLIC_SHOP_PHONE` | Shop details |
    | `PRINT_AGENT_API_KEY` | If using LAN printer |

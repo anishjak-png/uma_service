@@ -14,8 +14,12 @@ export type StaffRole = "reception" | "technician" | "admin";
 type AuthState = {
   isLoggedIn: boolean;
   role: StaffRole | null;
+  staffName: string | null;
   technicianId: string | null;
   technicianName: string | null;
+  deviceStatus: "pending" | "approved" | "revoked" | null;
+  deviceApproved: boolean;
+  pendingDeviceCount: number;
   loaded: boolean;
 };
 
@@ -26,8 +30,12 @@ type AuthContextValue = AuthState & {
 const AuthContext = createContext<AuthContextValue>({
   isLoggedIn: false,
   role: null,
+  staffName: null,
   technicianId: null,
   technicianName: null,
+  deviceStatus: null,
+  deviceApproved: false,
+  pendingDeviceCount: 0,
   loaded: false,
   refreshAuth: async () => {},
 });
@@ -36,8 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>({
     isLoggedIn: false,
     role: null,
+    staffName: null,
     technicianId: null,
     technicianName: null,
+    deviceStatus: null,
+    deviceApproved: false,
+    pendingDeviceCount: 0,
     loaded: false,
   });
 
@@ -48,8 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuth({
         isLoggedIn: Boolean(data.isLoggedIn),
         role: data.role ?? null,
+        staffName: data.staffName ?? null,
         technicianId: data.technicianId ?? null,
         technicianName: data.technicianName ?? null,
+        deviceStatus: data.deviceStatus ?? null,
+        deviceApproved: Boolean(data.deviceApproved),
+        pendingDeviceCount: data.pendingDeviceCount ?? 0,
         loaded: true,
       });
     } catch {

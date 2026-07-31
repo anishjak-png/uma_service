@@ -2,10 +2,15 @@ import { getIronSession, SessionOptions } from "iron-session";
 import { cookies } from "next/headers";
 
 export type StaffRole = "reception" | "technician" | "admin";
+export type DeviceStatus = "pending" | "approved" | "revoked";
 
 export interface SessionData {
   role: StaffRole;
   isLoggedIn: boolean;
+  staffUserId?: string;
+  staffName?: string;
+  deviceId?: string;
+  deviceStatus?: DeviceStatus;
   technicianId?: string;
   technicianName?: string;
 }
@@ -25,10 +30,18 @@ export async function getSession() {
   return getIronSession<SessionData>(await cookies(), sessionOptions);
 }
 
-export function roleFromPin(pin: string): StaffRole | null {
-  const normalized = pin.trim();
-  if (normalized === process.env.RECEPTION_PIN) return "reception";
-  if (normalized === process.env.TECHNICIAN_PIN) return "technician";
-  if (normalized === process.env.ADMIN_PIN) return "admin";
-  return null;
+export function isDeviceApproved(session: SessionData): boolean {
+  return session.deviceStatus === "approved";
+}
+
+export async function clearSession(session: Awaited<ReturnType<typeof getSession>>) {
+  session.role = "reception";
+  session.isLoggedIn = false;
+  session.staffUserId = undefined;
+  session.staffName = undefined;
+  session.deviceId = undefined;
+  session.deviceStatus = undefined;
+  session.technicianId = undefined;
+  session.technicianName = undefined;
+  await session.save();
 }

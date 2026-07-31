@@ -7,7 +7,10 @@ import { useAuth } from "./AuthProvider";
 
 type NavLink = { href: string; label: string };
 
-function getNavLinks(role: "reception" | "technician" | "admin" | null): NavLink[] {
+function getNavLinks(
+  role: "reception" | "technician" | "admin" | null,
+  pendingDeviceCount: number
+): NavLink[] {
   if (role === "technician") {
     return [
       { href: "/jobs/pending", label: "Home" },
@@ -19,10 +22,10 @@ function getNavLinks(role: "reception" | "technician" | "admin" | null): NavLink
   if (role === "admin") {
     return [
       { href: "/dashboard", label: "Home" },
+      { href: "/admin?tab=devices", label: pendingDeviceCount > 0 ? `Devices (${pendingDeviceCount})` : "Devices" },
       { href: "/admin?tab=reports", label: "Reports" },
       { href: "/admin", label: "Settings" },
       { href: "/jobs/pending", label: "Pending" },
-      { href: "/jobs/search", label: "Search" },
     ];
   }
 
@@ -37,8 +40,14 @@ function getNavLinks(role: "reception" | "technician" | "admin" | null): NavLink
 
 function getUserSubtitle(
   role: "reception" | "technician" | "admin" | null,
+  staffName: string | null,
   technicianName: string | null
 ) {
+  if (staffName) {
+    if (role === "technician") return `${staffName} · Technician`;
+    if (role === "reception") return `${staffName} · Reception`;
+    if (role === "admin") return `${staffName} · Admin`;
+  }
   if (role === "technician") {
     return technicianName ? `${technicianName} (Technician)` : "Technician";
   }
@@ -51,18 +60,24 @@ export function AppNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { role, technicianName, refreshAuth } = useAuth();
+  const { role, staffName, technicianName, pendingDeviceCount, refreshAuth } =
+    useAuth();
 
-  const links = getNavLinks(role);
+  const links = getNavLinks(role, pendingDeviceCount);
   const homeHref = role === "technician" ? "/jobs/pending" : "/dashboard";
-  const userSubtitle = getUserSubtitle(role, technicianName);
+  const userSubtitle = getUserSubtitle(role, staffName, technicianName);
   const adminTab = searchParams.get("tab");
 
   function isLinkActive(href: string) {
     if (href.startsWith("/admin")) {
       if (pathname !== "/admin") return false;
-      if (href.includes("tab=reports")) return adminTab === "reports";
-      return adminTab !== "reports";
+    if (href.includes("tab=devices")) return adminTab === "devices";
+    if (href.includes("tab=reports")) return adminTab === "reports";
+    return (
+      adminTab !== "reports" &&
+      adminTab !== "devices" &&
+      adminTab !== "staff"
+    );
     }
     if (href === "/dashboard") {
       return pathname === "/dashboard";

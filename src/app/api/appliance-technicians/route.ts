@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
@@ -19,6 +20,11 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const { applianceType, technicianId } = await request.json();
 

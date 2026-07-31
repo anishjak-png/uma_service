@@ -1,8 +1,13 @@
-import { getSession, StaffRole } from "./session";
+import { getSession, isDeviceApproved } from "./session";
+import type { StaffRole } from "./session";
 
 export async function requireAdmin() {
   const session = await getSession();
-  if (!session.isLoggedIn || session.role !== "admin") {
+  if (
+    !session.isLoggedIn ||
+    session.role !== "admin" ||
+    !isDeviceApproved(session)
+  ) {
     return null;
   }
   return session;
@@ -10,7 +15,19 @@ export async function requireAdmin() {
 
 export async function requireStaff(allowed: StaffRole[]) {
   const session = await getSession();
-  if (!session.isLoggedIn || !allowed.includes(session.role)) {
+  if (
+    !session.isLoggedIn ||
+    !allowed.includes(session.role) ||
+    !isDeviceApproved(session)
+  ) {
+    return null;
+  }
+  return session;
+}
+
+export async function requireApprovedDevice() {
+  const session = await getSession();
+  if (!session.isLoggedIn || !isDeviceApproved(session)) {
     return null;
   }
   return session;

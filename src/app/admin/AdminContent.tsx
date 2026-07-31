@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminTabs, AdminTab } from "@/components/AdminTabs";
+import { AdminTabs, AdminTab, AdminSettingsTab } from "@/components/AdminTabs";
 import { AppShell } from "@/components/AppShell";
 import { CreatableSelect } from "@/components/CreatableSelect";
 import { StatCard } from "@/components/StatCard";
@@ -10,6 +10,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { WhatsAppAutomationTab } from "./WhatsAppAutomationTab";
+import { StaffTab } from "./StaffTab";
+import { DevicesTab } from "./DevicesTab";
 import { reportJobsHref } from "@/lib/report-links";
 import type { ReportPeriod } from "@/lib/reports";
 
@@ -46,23 +48,27 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 export default function AdminContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { role, isLoggedIn, loaded: authLoaded } = useAuth();
+  const { role, isLoggedIn, loaded: authLoaded, pendingDeviceCount } = useAuth();
 
   const tabFromUrl = searchParams.get("tab");
   const initialTab: AdminTab =
     tabFromUrl === "reports" ||
+    tabFromUrl === "devices" ||
+    tabFromUrl === "staff" ||
     tabFromUrl === "technicians" ||
     tabFromUrl === "appliances" ||
     tabFromUrl === "customers" ||
     tabFromUrl === "whatsapp"
       ? tabFromUrl
-      : "technicians";
+      : "devices";
 
   const [tab, setTab] = useState<AdminTab>(initialTab);
 
   useEffect(() => {
     const requested = searchParams.get("tab");
     if (
+      requested === "devices" ||
+      requested === "staff" ||
       requested === "technicians" ||
       requested === "appliances" ||
       requested === "customers" ||
@@ -71,7 +77,7 @@ export default function AdminContent() {
     ) {
       setTab(requested);
     } else if (!requested) {
-      setTab("technicians");
+      setTab("devices");
     }
   }, [searchParams]);
 
@@ -80,9 +86,7 @@ export default function AdminContent() {
     router.replace(`/admin?tab=${next}`, { scroll: false });
   }
 
-  function handleSettingsTabChange(
-    next: "technicians" | "appliances" | "customers" | "whatsapp"
-  ) {
+  function handleSettingsTabChange(next: AdminSettingsTab) {
     handleTabChange(next);
   }
 
@@ -107,10 +111,13 @@ export default function AdminContent() {
     <AppShell>
       {tab !== "reports" && (
         <AdminTabs
-          active={tab as "technicians" | "appliances" | "customers" | "whatsapp"}
+          active={tab as AdminSettingsTab}
           onChange={handleSettingsTabChange}
+          pendingDeviceCount={pendingDeviceCount}
         />
       )}
+      {tab === "devices" && <DevicesTab />}
+      {tab === "staff" && <StaffTab />}
       {tab === "technicians" && <TechniciansTab />}
       {tab === "appliances" && <AppliancesTab />}
       {tab === "customers" && <CustomersTab />}

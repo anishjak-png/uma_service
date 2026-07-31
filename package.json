@@ -13,18 +13,27 @@
     "db:setup": "node node_modules/prisma/build/index.js db push && npx tsx prisma/seed.ts",
     "print-bridge": "npx tsx --env-file=.env scripts/print-bridge/index.ts",
     "print-agent": "npm run print-bridge",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "android:build": "cd android && gradlew.bat assembleDebug",
     "postinstall": "node node_modules/prisma/build/index.js generate"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/core": "^7.4.2",
+    "@capacitor/device": "^7.0.5",
     "@prisma/client": "^6.19.0",
     "@supabase/supabase-js": "^2.111.0",
+    "bcryptjs": "^3.0.3",
     "iron-session": "^8.0.4",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.2",
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

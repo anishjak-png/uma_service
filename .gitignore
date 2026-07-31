@@ -45,3 +45,10 @@ yarn-error.log*
 .env*
 
 /logs/
+
+*.apk
+*.aab
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
