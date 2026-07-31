@@ -20,7 +20,7 @@ interface JobForReceipt {
 
 type PrintStatus = {
   status: string;
-  lastError?: string | null;
+  errorMessage?: string | null;
 };
 
 export function ReceiptActions({
@@ -162,18 +162,18 @@ export function ReceiptActions({
       {autoPoll && printState && (
         <div
           className={`rounded-lg px-4 py-3 text-sm font-medium ${
-            printState === "Done"
+            printState === "Printed"
               ? "bg-green-50 text-green-800"
               : printState === "Failed"
                 ? "bg-amber-50 text-amber-800"
                 : "bg-blue-50 text-blue-800"
           }`}
         >
-          {printState === "Done" && "Receipt printed on counter printer"}
+          {printState === "Printed" && "Receipt printed on counter printer"}
           {printState === "Pending" && "Sending to counter printer…"}
           {printState === "Printing" && "Printing…"}
           {printState === "Failed" &&
-            `Print failed${printStatus?.lastError ? `: ${printStatus.lastError}` : ""}`}
+            `Print failed${printStatus?.errorMessage ? `: ${printStatus.errorMessage}` : ""}`}
         </div>
       )}
 
@@ -212,7 +212,7 @@ export function ReceiptActions({
                 ? "Sending…"
                 : autoPoll && printState === "Failed"
                   ? "Retry Print"
-                  : autoPoll && printState === "Done"
+                  : autoPoll && printState === "Printed"
                     ? "Reprint"
                     : "Print to Counter"}
             </button>

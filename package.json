@@ -11,11 +11,13 @@
     "db:studio": "node node_modules/prisma/build/index.js studio",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:setup": "node node_modules/prisma/build/index.js db push && npx tsx prisma/seed.ts",
-    "print-agent": "npx tsx --env-file=.env scripts/print-agent.ts",
+    "print-bridge": "npx tsx --env-file=.env scripts/print-bridge/index.ts",
+    "print-agent": "npm run print-bridge",
     "postinstall": "node node_modules/prisma/build/index.js generate"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "@supabase/supabase-js": "^2.111.0",
     "iron-session": "^8.0.4",
     "next": "16.2.10",
     "react": "19.2.4",

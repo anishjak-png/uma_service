@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  markPrintJobDone,
   markPrintJobFailed,
+  markPrintJobPrinted,
   markPrintJobPrinting,
-  verifyPrintAgentKey,
 } from "@/lib/print-queue";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  if (!verifyPrintAgentKey(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id } = await context.params;
   const body = await request.json();
 
@@ -21,14 +16,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ ok: true });
   }
 
-  if (body.status === "done") {
-    await markPrintJobDone(id);
+  if (body.status === "done" || body.status === "printed") {
+    await markPrintJobPrinted(id);
     return NextResponse.json({ ok: true });
   }
 
   if (body.status === "failed") {
-    const error = typeof body.error === "string" ? body.error : "Print failed";
-    await markPrintJobFailed(id, error);
+    const errorMessage =
+      typeof body.error === "string" ? body.error : "Print failed";
+    await markPrintJobFailed(id, errorMessage);
     return NextResponse.json({ ok: true });
   }
 

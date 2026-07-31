@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 
 const publicPaths = ["/", "/j", "/track", "/api/auth/login", "/technician/select"];
-const publicPrefixes = ["/j/", "/api/print-queue", "/api/track"];
+const publicPrefixes = ["/j/", "/api/track"];
 
 function isPublic(pathname: string): boolean {
   if (publicPaths.includes(pathname)) return true;

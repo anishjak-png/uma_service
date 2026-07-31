@@ -1,6 +1,6 @@
 /**
  * End-to-end print test: login as reception, create a job, poll print status.
- * Requires: npm run dev + npm run print-agent running.
+ * Requires: npm run print-bridge running on shop PC (or local dev + bridge).
  *
  * Usage: npx tsx --env-file=.env scripts/test-print-flow.ts
  */
@@ -47,14 +47,14 @@ async function main() {
       headers: { Cookie: cookie.split(";")[0] },
     });
     if (!printRes.ok) continue;
-    const status = (await printRes.json()) as { status: string; lastError?: string };
-    console.log(`  Print status: ${status.status}${status.lastError ? ` — ${status.lastError}` : ""}`);
-    if (status.status === "Done") {
+    const status = (await printRes.json()) as { status: string; errorMessage?: string };
+    console.log(`  Print status: ${status.status}${status.errorMessage ? ` — ${status.errorMessage}` : ""}`);
+    if (status.status === "Printed") {
       console.log("SUCCESS — receipt should have printed on counter printer.");
       return;
     }
     if (status.status === "Failed") {
-      throw new Error(`Print failed: ${status.lastError ?? "unknown"}`);
+      throw new Error(`Print failed: ${status.errorMessage ?? "unknown"}`);
     }
   }
 

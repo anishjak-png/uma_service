@@ -63,9 +63,9 @@ Full Supabase setup: **[docs/SUPABASE.md](docs/SUPABASE.md)**
 
 ## LAN Thermal Printer (optional)
 
-Print agent on shop PC polls the **cloud app**; data stays in Supabase.
+Windows **Print Bridge** on shop PC uses **Supabase Realtime** (instant, no polling).
 
-See [docs/PRINT_SETUP.md](PRINT_SETUP.md) for full setup (local test + shop PC).
+See [docs/PRINT_SETUP.md](docs/PRINT_SETUP.md).
 
 ## Daily Workflow
 

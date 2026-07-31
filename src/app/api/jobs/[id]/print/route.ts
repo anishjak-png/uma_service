@@ -44,7 +44,7 @@ export async function GET(_request: Request, context: RouteContext) {
     toPrintStatusResponse(status) ?? {
       status: "Pending",
       attempts: 0,
-      lastError: null,
+      errorMessage: null,
       printedAt: null,
     }
   );

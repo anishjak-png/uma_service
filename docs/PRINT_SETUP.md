@@ -1,123 +1,79 @@
-# Thermal Printer Setup
+# Windows Print Bridge — Supabase Realtime
+
+Instant receipt printing with **no polling**. The bridge subscribes to `INSERT` events on `PrintJob` via Supabase Realtime.
 
 ## Architecture
 
-```mermaid
-sequenceDiagram
-    participant Phone as ReceptionPhone
-    participant App as VercelApp
-    participant Agent as PrintAgent_ShopPC
-    participant Printer as LAN_Printer
-
-    Phone->>App: Create job
-    App->>App: Queue PrintJob Pending
-    Agent->>App: GET /api/print-queue every 2s
-    App->>Agent: ESC/POS receipt
-    Agent->>Printer: TCP 192.168.x.x:9100
+```
+Reception (phone/browser)
+        │
+        ▼
+Vercel ERP — creates PrintJob (status: Pending)
+        │
+        ▼
+Supabase PostgreSQL
+        │
+        ▼ Realtime INSERT event
+Windows Print Bridge (shop PC)
+        │
+        ▼ ESC/POS
+LAN Printer 192.168.1.87:9100
 ```
 
-The app runs in the cloud (Vercel). The **print agent** runs on a shop PC on the same LAN as the printer.
+## One-time Supabase setup
 
----
+1. Run `npm run db:push` to apply schema changes
+2. In **Supabase SQL Editor**, run [`prisma/enable-printjob-realtime.sql`](../prisma/enable-printjob-realtime.sql)
 
-## Shop PC setup (production)
+## Shop PC `.env`
 
-### 1. Requirements
+Copy [`.env.shop.example`](../.env.shop.example):
 
-- Windows PC on the **same Wi‑Fi/LAN** as the printer
-- Node.js 20+ installed
-- Printer static IP (e.g. `192.168.1.87`), port **9100** open
+| Variable | Example |
+|----------|---------|
+| `SUPABASE_URL` | `https://xxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | from Supabase → Settings → API |
+| `PRINT_BRANCH_ID` | `main` (must match Vercel) |
+| `PRINT_PRINTER_ID` | `counter-1` (must match Vercel) |
+| `THERMAL_PRINTER_HOST` | `192.168.1.87` |
 
-Verify from shop PC:
-
-```powershell
-Test-NetConnection -ComputerName 192.168.1.87 -Port 9100
-```
-
-Expect `TcpTestSucceeded : True`.
-
-### 2. Clone project
-
-```bash
-git clone https://github.com/anishjak-png/uma_service.git
-cd uma_service
-npm install
-```
-
-### 3. Create `.env` on shop PC
-
-```env
-PRINT_AGENT_APP_URL="https://uma-service.vercel.app"
-PRINT_AGENT_API_KEY="your-shared-secret"
-THERMAL_PRINTER_HOST="192.168.1.87"
-THERMAL_PRINTER_PORT="9100"
-```
-
-**Important:** `PRINT_AGENT_API_KEY` must match the value in **Vercel → Project → Settings → Environment Variables** (Production).
-
-### 4. Vercel environment variable
-
-In Vercel dashboard, add:
+## Vercel environment variables
 
 | Variable | Value |
 |----------|-------|
-| `PRINT_AGENT_API_KEY` | Same secret as shop PC `.env` |
+| `PRINT_BRANCH_ID` | `main` |
+| `PRINT_PRINTER_ID` | `counter-1` |
 
-Redeploy after adding.
-
-### 5. Run print agent (keep running during shop hours)
+## Start the bridge
 
 ```bash
-npm run print-agent
+npm install
+npm run print-bridge
 ```
 
-Expected output:
+Expected logs:
 
 ```
-Print agent started
-  App:     https://uma-service.vercel.app
-  Printer: 192.168.1.87:9100
-  Poll:    every 2000ms
+Print Bridge Started
+Realtime Connected
+New Print Job Received: ...
+Printing Job UT 3
+Print Successful: UT 3
 ```
 
-**Tip:** Create a Windows shortcut or Task Scheduler entry to start `npm run print-agent` at login.
+## Behaviour
 
-### 6. Test
-
-1. Create a job on `https://uma-service.vercel.app` (Reception login from phone)
-2. Watch print agent console: `Printing UT X …` → `Done: UT X`
-3. Receipt prints with UT number + QR tracking link
-
----
-
-## Local testing (dev PC)
-
-Use when testing printer on your PC before moving to shop:
-
-```env
-PRINT_AGENT_APP_URL="http://localhost:3000"
-PRINT_AGENT_API_KEY="uma-print-agent-dev-secret-change-in-prod"
-THERMAL_PRINTER_HOST="192.168.1.87"
-THERMAL_PRINTER_PORT="9100"
-```
-
-Terminal 1: `npm run dev`  
-Terminal 2: `npm run print-agent`  
-Terminal 3 (optional): `npx tsx --env-file=.env scripts/test-print-flow.ts`
-
----
+- **INSERT only** — UPDATE/DELETE ignored
+- **Instant print** — no `setInterval` polling
+- **FIFO queue** — one receipt at a time
+- **Duplicate protection** — in-memory processed job IDs
+- **Reconnect** — on websocket restore, syncs missed Pending jobs once
+- **Branch/printer filter** — each bridge only prints matching jobs
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---------|-----|
-| `'tsx' is not recognized` | Run `npm install`, then `npm run print-agent` (uses `npx tsx`) |
-| `Poll failed: 401` | API key mismatch — sync Vercel and shop PC `.env` |
-| `Printer connection timed out` | Check LAN, printer IP, port 9100 |
-| Receipt not printing | Confirm agent running; create job or use Reprint on job detail |
-| Garbled text | Printer must support 80mm ESC/POS |
-
-## Fallbacks (no LAN agent)
-
-- **Print / PDF** — browser print from job detail
-- **Bluetooth fallback** — phone pairs with portable BT printer (job detail page)
+| Issue | Fix |
+|-------|-----|
+| No Realtime events | Run `enable-printjob-realtime.sql` |
+| Job skipped (branch/printer) | Match `PRINT_BRANCH_ID` / `PRINT_PRINTER_ID` on Vercel and shop PC |
+| Print Failed | Check `Test-NetConnection` to printer port 9100 |

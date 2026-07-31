@@ -127,21 +127,24 @@ model JobSequence {
 enum PrintJobStatus {
   Pending
   Printing
-  Done
+  Printed
   Failed
 }
 
 model PrintJob {
-  id        String         @id @default(cuid())
-  jobCardId String
-  jobCard   JobCard        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
-  type      String         @default("receipt")
-  status    PrintJobStatus @default(Pending)
-  attempts  Int            @default(0)
-  lastError String?
-  createdAt DateTime       @default(now())
-  printedAt DateTime?
+  id           String         @id @default(cuid())
+  jobCardId    String
+  jobCard      JobCard        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  type         String         @default("receipt")
+  status       PrintJobStatus @default(Pending)
+  branchId     String         @default("main")
+  printerId    String         @default("counter-1")
+  attempts     Int            @default(0)
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+  printedAt    DateTime?
 
+  @@index([branchId, printerId, status, createdAt])
   @@index([status, createdAt])
 }
 
