@@ -1,4 +1,4 @@
-# Starts the print bridge (used by Task Scheduler on login).
+# Starts the print bridge (used by Task Scheduler on login). No git pull — starts immediately.
 . "$PSScriptRoot\config.ps1"
 
 $ErrorActionPreference = "Stop"
@@ -22,19 +22,8 @@ if (Test-PrintBridgeRunning) {
 Set-Location $projectRoot
 
 if (-not (Test-Path ".env")) {
-  Write-Error ".env missing in $projectRoot — edit .env with Supabase and printer settings."
+  Write-Error ".env missing in $projectRoot — run INSTALL.bat or edit .env with Supabase and printer settings."
   exit 1
 }
 
-# Pull latest bridge fixes silently; ignore failure if offline.
-git pull --ff-only 2>$null | Out-Null
-
-$logDir = Join-Path $projectRoot "logs"
-if (-not (Test-Path $logDir)) {
-  New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-}
-$logFile = Join-Path $logDir "print-bridge.log"
-
-"[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting print bridge" | Add-Content $logFile
-
-npm run print-bridge 2>&1 | Tee-Object -FilePath $logFile -Append
+npm run print-bridge

@@ -1,35 +1,77 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
+import type { BridgeState } from "./bridge-state";
 import type { BridgeConfig } from "./config";
-import { log } from "./logger";
+import { log, type BridgeLogger } from "./logger";
 import type { PrintQueueManager } from "./print-queue-manager";
 import type { PrintJobRow } from "./types";
+
+const MAX_RECONNECT_DELAY_MS = 30_000;
 
 export class RealtimeManager {
   private channel: RealtimeChannel | null = null;
   private connected = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+  private stopped = false;
 
   constructor(
     private readonly config: BridgeConfig,
     private readonly supabase: SupabaseClient,
-    private readonly queue: PrintQueueManager
+    private readonly queue: PrintQueueManager,
+    private readonly state: BridgeState,
+    private readonly logger: BridgeLogger
   ) {}
 
   start(): void {
+    this.stopped = false;
     this.subscribe();
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.channel) {
       void this.supabase.removeChannel(this.channel);
       this.channel = null;
     }
     this.connected = false;
+    this.state.setRealtimeConnected(false);
+  }
+
+  reconnect(): void {
+    if (this.stopped) return;
+    this.scheduleReconnect(0);
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  private scheduleReconnect(delayMs?: number): void {
+    if (this.stopped || this.reconnectTimer) return;
+
+    const delay =
+      delayMs ??
+      Math.min(MAX_RECONNECT_DELAY_MS, 1000 * Math.pow(2, this.reconnectAttempts));
+    this.reconnectAttempts++;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.channel) {
+        void this.supabase.removeChannel(this.channel);
+        this.channel = null;
+      }
+      this.connected = false;
+      this.state.setRealtimeConnected(false);
+      this.subscribe();
+    }, delay);
   }
 
   private subscribe(): void {
-    if (this.channel) {
-      void this.supabase.removeChannel(this.channel);
-    }
+    if (this.stopped) return;
 
     this.channel = this.supabase
       .channel(`print-bridge-${this.config.branchId}-${this.config.printerId}`)
@@ -42,32 +84,38 @@ export class RealtimeManager {
         },
         (payload) => {
           const row = payload.new as PrintJobRow;
-          log.newJob(row.id);
+          this.logger.info(log.newJob(row.id));
           this.queue.enqueueFromEvent(row);
         }
       )
       .subscribe((status, err) => {
         if (status !== "SUBSCRIBED") {
-          console.log(`Realtime channel status: ${status}${err ? ` — ${err.message}` : ""}`);
+          this.logger.warn(`Realtime channel status: ${status}${err ? ` — ${err.message}` : ""}`);
         }
+
         if (status === "SUBSCRIBED") {
           const wasConnected = this.connected;
-          if (wasConnected) {
-            log.realtimeReconnected();
-            void this.queue.syncMissedJobs();
-          } else {
-            log.realtimeConnected();
-            setTimeout(() => void this.queue.syncMissedJobs(), 5000);
-          }
           this.connected = true;
+          this.reconnectAttempts = 0;
+          this.state.setRealtimeConnected(true);
+
+          if (wasConnected) {
+            this.logger.info(log.realtimeReconnected());
+          } else {
+            this.logger.info(log.realtimeConnected());
+          }
+
+          void this.queue.syncMissedJobs();
           return;
         }
 
         if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           if (this.connected) {
-            log.realtimeDisconnected();
+            this.logger.warn(log.realtimeDisconnected());
           }
           this.connected = false;
+          this.state.setRealtimeConnected(false);
+          this.scheduleReconnect();
         }
       });
   }

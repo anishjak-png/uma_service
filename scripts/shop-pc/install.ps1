@@ -96,7 +96,7 @@ function Ensure-EnvFile {
   Write-Host ""
   Write-Host "Created .env from template." -ForegroundColor Yellow
   Write-Host "Add your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from Supabase Dashboard -> Settings -> API." -ForegroundColor Yellow
-  Write-Host "Confirm THERMAL_PRINTER_HOST (default 192.168.1.87)." -ForegroundColor Yellow
+  Write-Host "Confirm PRINTER_IP and Supabase keys in .env." -ForegroundColor Yellow
   Write-Host ""
   $open = Read-Host "Open .env in Notepad now? (Y/n)"
   if ($open -ne "n" -and $open -ne "N") {
@@ -109,8 +109,17 @@ function Test-PrinterPort {
   param([string]$Root)
 
   $envContent = Get-Content (Join-Path $Root ".env") -Raw
-  $host = if ($envContent -match 'THERMAL_PRINTER_HOST="([^"]+)"') { $Matches[1] } else { "192.168.1.87" }
-  $port = if ($envContent -match 'THERMAL_PRINTER_PORT="([^"]+)"') { [int]$Matches[1] } else { 9100 }
+  $host = if ($envContent -match 'PRINTER_IP="([^"]+)"') { $Matches[1] }
+          elseif ($envContent -match 'THERMAL_PRINTER_HOST="([^"]+)"') { $Matches[1] }
+          else { "" }
+  $port = if ($envContent -match 'PRINTER_PORT="([^"]+)"') { [int]$Matches[1] }
+          elseif ($envContent -match 'THERMAL_PRINTER_PORT="([^"]+)"') { [int]$Matches[1] }
+          else { 9100 }
+
+  if (-not $host) {
+    Write-Host "PRINTER_IP not set in .env — skipping printer test." -ForegroundColor Yellow
+    return
+  }
 
   Write-Step "Testing printer $host`:$port"
   $result = Test-NetConnection -ComputerName $host -Port $port -WarningAction SilentlyContinue
@@ -182,7 +191,9 @@ try {
   Write-Host ""
   Write-Host "Done!" -ForegroundColor Green
   Write-Host "  - Bridge starts automatically on every login" -ForegroundColor DarkGray
-  Write-Host "  - Log file: $root\logs\print-bridge.log" -ForegroundColor DarkGray
+  Write-Host "  - Health dashboard: http://localhost:3005" -ForegroundColor DarkGray
+  Write-Host "  - Admin updates: scripts/shop-pc/Update-PrintBridge.bat" -ForegroundColor DarkGray
+  Write-Host "  - Logs: $root\logs\ (7 rotated files)" -ForegroundColor DarkGray
   Write-Host "  - To remove auto-start: Uninstall-PrintBridge.bat" -ForegroundColor DarkGray
   Write-Host ""
 }

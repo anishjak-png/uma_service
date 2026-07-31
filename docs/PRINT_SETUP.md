@@ -1,6 +1,6 @@
 # Windows Print Bridge — Supabase Realtime
 
-Instant receipt printing with **no polling**. The bridge subscribes to `INSERT` events on `PrintJob` via Supabase Realtime.
+Production print bridge for shop PCs. Instant receipts via Supabase Realtime INSERT events — **no HTTP polling**.
 
 ## Architecture
 
@@ -17,13 +17,22 @@ Supabase PostgreSQL
 Windows Print Bridge (shop PC)
         │
         ▼ ESC/POS
-LAN Printer 192.168.1.87:9100
+LAN Printer (PRINTER_IP:PRINTER_PORT)
 ```
 
-## One-time Supabase setup
+**Modules (Windows Service ready):** Configuration · Realtime Manager · Print Queue · Printer Driver · Logger · Health Server · Connectivity Monitor
 
-1. Run `npm run db:push` to apply schema changes
-2. In **Supabase SQL Editor**, run [`prisma/enable-printjob-realtime.sql`](../prisma/enable-printjob-realtime.sql)
+## Shop PC — one-click install
+
+Double-click **`scripts/shop-pc/INSTALL.bat`** once.
+
+| Step | Who |
+|------|-----|
+| `INSTALL.bat` | Once per PC |
+| `Update-PrintBridge.bat` | Administrator only (git pull + npm install) |
+| Daily startup | Automatic on Windows login |
+
+Bridge starts in **under 5 seconds** — no git pull, no npm install on login.
 
 ## Shop PC `.env`
 
@@ -33,9 +42,14 @@ Copy [`.env.shop.example`](../.env.shop.example):
 |----------|---------|
 | `SUPABASE_URL` | `https://xxx.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | from Supabase → Settings → API |
-| `PRINT_BRANCH_ID` | `main` (must match Vercel) |
-| `PRINT_PRINTER_ID` | `counter-1` (must match Vercel) |
-| `THERMAL_PRINTER_HOST` | `192.168.1.87` |
+| `BRANCH_ID` | `main` (must match Vercel `PRINT_BRANCH_ID`) |
+| `PRINTER_ID` | `counter-1` (must match Vercel `PRINT_PRINTER_ID`) |
+| `PRINTER_IP` | LAN printer IP |
+| `PRINTER_PORT` | `9100` |
+| `PRINTER_NAME` | `Counter Printer` |
+| `HEALTH_PORT` | `3005` (optional) |
+
+Legacy names still work: `PRINT_BRANCH_ID`, `THERMAL_PRINTER_HOST`, etc.
 
 ## Vercel environment variables
 
@@ -44,59 +58,43 @@ Copy [`.env.shop.example`](../.env.shop.example):
 | `PRINT_BRANCH_ID` | `main` |
 | `PRINT_PRINTER_ID` | `counter-1` |
 
-## Shop PC — one-click install (recommended)
+## Health dashboard
 
-On the shop PC, double-click:
+While the bridge runs: **http://localhost:3005**
 
+Shows version, Realtime/Supabase/printer status, queue length, last printed job, last error, heartbeat.
+
+JSON API: `http://localhost:3005/status`
+
+## Reliability features
+
+- **Auto-reconnect** — Supabase Realtime, internet, printer (with retries)
+- **Missed job recovery** — on reconnect, prints all `Pending` jobs FIFO, then continues Realtime
+- **Duplicate protection** — atomic DB claim + in-memory dedup
+- **Sequential queue** — one receipt at a time
+- **Log rotation** — keeps last 7 log files in `logs/`
+
+## Manual start (alternative)
+
+```bash
+npm run print-bridge
 ```
-scripts/shop-pc/INSTALL.bat
-```
-
-This will:
-
-1. Install Node/npm dependencies (clone repo to `%USERPROFILE%\UmaService` if needed)
-2. Create `.env` from `.env.shop.example` (opens Notepad for Supabase keys)
-3. Test printer connection
-4. Register **auto-start on Windows login** (Task Scheduler)
-5. Start the bridge immediately
-
-**Daily use:** nothing — bridge starts when you log in.
-
-| File | Purpose |
-|------|---------|
-| `INSTALL.bat` | One-time setup |
-| `START-NOW.bat` | Manual start |
-| `Uninstall-PrintBridge.bat` | Remove auto-start only |
-
-Logs: `logs/print-bridge.log` in the project folder.
-
----
-
-## Manual setup (alternative)
 
 Expected logs:
 
 ```
 Print Bridge Started
 Realtime Connected
-New Print Job Received: ...
 Printing Job UT 3
 Print Successful: UT 3
 ```
-
-## Behaviour
-
-- **INSERT only** — UPDATE/DELETE ignored
-- **Instant print** — no `setInterval` polling
-- **FIFO queue** — one receipt at a time
-- **Duplicate protection** — in-memory processed job IDs
-- **Reconnect** — on websocket restore, syncs missed Pending jobs once
-- **Branch/printer filter** — each bridge only prints matching jobs
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| No Realtime events | Run `enable-printjob-realtime.sql` |
-| Job skipped (branch/printer) | Match `PRINT_BRANCH_ID` / `PRINT_PRINTER_ID` on Vercel and shop PC |
-| Print Failed | Check `Test-NetConnection` to printer port 9100 |
+| No Realtime events | Run `prisma/enable-printjob-realtime.sql` in Supabase |
+| Job skipped (branch/printer) | Match `BRANCH_ID` / `PRINTER_ID` with Vercel |
+| Print Failed | Check health dashboard; `Test-NetConnection` to `PRINTER_IP` port 9100 |
+| Duplicate prints | Ensure only one bridge instance; run latest update |
+| Apply code updates | Admin runs `Update-PrintBridge.bat` — not on login |
