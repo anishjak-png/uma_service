@@ -278,15 +278,12 @@ export default function SearchContent() {
     fetch("/api/jobs/search?warranty=true")
       .then((r) => r.json())
       .then((data) => {
-        const list = Array.isArray(data?.jobs) ? data.jobs : [];
+        const list: JobResult[] = Array.isArray(data?.jobs) ? data.jobs : [];
         const brands = Array.from(
           new Set(
             list
-              .map((j: JobResult) => j.brand)
-              .filter(
-                (b: unknown): b is string =>
-                  typeof b === "string" && b.length > 0
-              )
+              .map((j) => j.brand)
+              .filter((b): b is string => typeof b === "string" && b.length > 0)
           )
         ).sort((a, b) => a.localeCompare(b));
         setWarrantyBrands(brands);
