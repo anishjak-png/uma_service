@@ -1,6 +1,6 @@
 import { JobStatus, PrismaClient } from "@prisma/client";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function prismaHasWarrantySupport(): boolean {
   return Boolean(
@@ -13,7 +13,7 @@ function prismaHasWarrantySupport(): boolean {
 if (process.env.NODE_ENV !== "production" && globalForPrisma.prisma) {
   if (!prismaHasWarrantySupport()) {
     void globalForPrisma.prisma.$disconnect().catch(() => {});
-    delete globalForPrisma.prisma;
+    globalForPrisma.prisma = undefined;
     console.warn(
       "[prisma] Stale client detected — stop dev server, run `npx prisma generate`, delete `.next`, restart."
     );

@@ -1,4 +1,4 @@
-import { getAppUrl } from "./constants";
+import { getAppUrl, SHOP_NAME, SHOP_PHONE } from "./constants";
 import {
   formatAccessoryLabel,
   formatMobileDisplay,

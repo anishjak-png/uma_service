@@ -38,6 +38,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# secrets / local notes (never commit)
+resources/staff*.yaml
+*passwrod*
+
 /prisma/dev.db
 /prisma/dev.db-journal
 
