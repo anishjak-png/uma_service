@@ -1,17 +1,19 @@
 import { JobStatusBadge } from "@/components/JobStatusBadge";
 import { SHOP_NAME, STATUS_LABELS } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { jobNumberFromTrackingPath } from "@/lib/jobs";
 import { notFound } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 
 type PageProps = { params: Promise<{ jobNumber: string }> };
 
 export default async function PublicStatusPage({ params }: PageProps) {
-  const { jobNumber } = await params;
+  const { jobNumber: pathSegment } = await params;
+  const normalizedJobNumber = jobNumberFromTrackingPath(pathSegment);
 
   const job = await prisma.jobCard.findFirst({
     where: {
-      jobNumber: { equals: jobNumber, mode: "insensitive" },
+      jobNumber: { equals: normalizedJobNumber, mode: "insensitive" },
     },
     include: { customer: true },
   });

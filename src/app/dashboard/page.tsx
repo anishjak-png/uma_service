@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   }
 
   if (session.role === "technician") {
-    redirect("/jobs/pending");
+    redirect("/jobs/pending?scope=my");
   }
 
   if (session.role === "admin") {

@@ -25,7 +25,13 @@ function resolveAppUrl(): string {
 
 export const APP_URL = resolveAppUrl();
 
+/** Resolve at call time so server notifications use current env (not a stale build). */
+export function getAppUrl(): string {
+  return resolveAppUrl();
+}
+
 export const MAX_PRODUCT_PHOTOS = 3;
+export const MAX_WARRANTY_CARD_PHOTOS = 2;
 
 export const JOB_STATUSES = [
   "Pending",
@@ -100,7 +106,7 @@ export function getSelectableStatuses(
       role === "admin"
         ? ["Ready", "Return", "Pending", "WaitingForCustomerApproval"]
         : ["Ready", "Return"];
-    if (role !== "technician" && !opts?.isWarranty) {
+    if (!opts?.isWarranty) {
       return [...outsourcedOptions, "WarrantyPending"];
     }
     return outsourcedOptions;
@@ -113,11 +119,6 @@ export function getSelectableStatuses(
       !isWarrantyStatus(s)
   );
 
-  if (role === "technician") {
-    return options;
-  }
-
-  // Customer may return next day with warranty proof — convert paid/out-of-warranty jobs
   if (!opts?.isWarranty) {
     return [...options, "WarrantyPending"];
   }

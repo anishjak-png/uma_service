@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SHOP_NAME } from "@/lib/constants";
 import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { getDeviceIdentity } from "@/lib/device-identity";
 import {
   Card,
@@ -15,11 +15,21 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { refreshAuth } = useAuth();
+  const { refreshAuth, isLoggedIn, deviceApproved, role, loaded } = useAuth();
   const [mobile, setMobile] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (!isLoggedIn) return;
+    if (!deviceApproved) {
+      router.replace("/device-pending");
+      return;
+    }
+    router.replace(role === "technician" ? "/jobs/pending?scope=my" : "/dashboard");
+  }, [loaded, isLoggedIn, deviceApproved, role, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -68,8 +78,16 @@ export default function LoginPage() {
 
     await refreshAuth();
     setLoading(false);
-    router.push(data.role === "technician" ? "/jobs/pending" : "/dashboard");
+    router.push(data.role === "technician" ? "/jobs/pending?scope=my" : "/dashboard");
     router.refresh();
+  }
+
+  if (!loaded || isLoggedIn) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 to-slate-100 p-4">
+        <p className="text-sm text-slate-500">Loading…</p>
+      </div>
+    );
   }
 
   return (

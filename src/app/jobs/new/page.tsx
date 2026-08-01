@@ -3,11 +3,11 @@
 import { AppShell } from "@/components/AppShell";
 import { CreatableSelect } from "@/components/CreatableSelect";
 import { ReceiptActions } from "@/components/ReceiptActions";
-import { MAX_PRODUCT_PHOTOS } from "@/lib/constants";
+import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
 import { formatMobileDisplay } from "@/lib/jobs";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type CreatedJob = {
@@ -18,6 +18,7 @@ type CreatedJob = {
   brand: string;
   model?: string | null;
   complaint: string;
+  isWarranty?: boolean;
   customer: { mobile: string; name?: string | null };
   assignedTechnician?: { name: string } | null;
 };
@@ -27,7 +28,7 @@ type LookupOptions = {
 };
 
 export default function NewJobPage() {
-  const { role, loaded: authLoaded } = useAuth();
+  const { loaded: authLoaded } = useAuth();
   const [lookupOptions, setLookupOptions] = useState<Record<string, string[]>>({
     appliance: [],
     brand: [],
@@ -43,16 +44,24 @@ export default function NewJobPage() {
   const [physicalCondition, setPhysicalCondition] = useState("");
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const warrantyCardFormInputRef = useRef<HTMLInputElement>(null);
+  const warrantyCardSuccessInputRef = useRef<HTMLInputElement>(null);
   const [assignedTechName, setAssignedTechName] = useState<string | null>(null);
   const [accessoryQty, setAccessoryQty] = useState<Record<string, number>>({});
   const [otherAccessory, setOtherAccessory] = useState("");
   const [otherAccessoryQty, setOtherAccessoryQty] = useState(1);
   const [isWarranty, setIsWarranty] = useState(false);
   const [warrantyPurchaseDate, setWarrantyPurchaseDate] = useState("");
+  const [warrantyCardFiles, setWarrantyCardFiles] = useState<File[]>([]);
+  const [warrantyCardPreviews, setWarrantyCardPreviews] = useState<string[]>([]);
   const [lookupsLoading, setLookupsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [createdJob, setCreatedJob] = useState<CreatedJob | null>(null);
+  const [warrantyCardUrls, setWarrantyCardUrls] = useState<string[]>([]);
+  const [warrantyCardUploading, setWarrantyCardUploading] = useState(false);
+  const [warrantyCardError, setWarrantyCardError] = useState("");
 
   useEffect(() => {
     fetch("/api/lookups?category=appliance")
@@ -102,8 +111,9 @@ export default function NewJobPage() {
   useEffect(() => {
     return () => {
       photoPreviews.forEach((url) => URL.revokeObjectURL(url));
+      warrantyCardPreviews.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [photoPreviews]);
+  }, [photoPreviews, warrantyCardPreviews]);
 
   const lookupCustomer = useCallback(async (value: string) => {
     const digits = value.replace(/\D/g, "").slice(-10);
@@ -173,6 +183,39 @@ export default function NewJobPage() {
     setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function handleWarrantyCardFormUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newFiles = Array.from(files).slice(
+      0,
+      MAX_WARRANTY_CARD_PHOTOS - warrantyCardFiles.length
+    );
+    if (newFiles.length === 0) return;
+
+    setWarrantyCardFiles((prev) =>
+      [...prev, ...newFiles].slice(0, MAX_WARRANTY_CARD_PHOTOS)
+    );
+    setWarrantyCardPreviews((prev) => [
+      ...prev,
+      ...newFiles.map((f) => URL.createObjectURL(f)),
+    ].slice(0, MAX_WARRANTY_CARD_PHOTOS));
+
+    e.target.value = "";
+  }
+
+  function removeWarrantyCardPhoto(index: number) {
+    URL.revokeObjectURL(warrantyCardPreviews[index]);
+    setWarrantyCardFiles((prev) => prev.filter((_, i) => i !== index));
+    setWarrantyCardPreviews((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function clearWarrantyCardPhotos() {
+    warrantyCardPreviews.forEach((url) => URL.revokeObjectURL(url));
+    setWarrantyCardFiles([]);
+    setWarrantyCardPreviews([]);
+  }
+
   function resetForm() {
     setCreatedJob(null);
     setMobile("");
@@ -190,7 +233,48 @@ export default function NewJobPage() {
     setOtherAccessory("");
     setOtherAccessoryQty(1);
     setIsWarranty(false);
+    setWarrantyPurchaseDate("");
+    clearWarrantyCardPhotos();
+    setWarrantyCardUrls([]);
+    setWarrantyCardError("");
     setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [], accessory: [] }));
+  }
+
+  async function handleWarrantyCardUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!createdJob) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const remaining = MAX_WARRANTY_CARD_PHOTOS - warrantyCardUrls.length;
+    if (remaining <= 0) return;
+
+    setWarrantyCardUploading(true);
+    setWarrantyCardError("");
+
+    const formData = new FormData();
+    Array.from(files)
+      .slice(0, remaining)
+      .forEach((file) => formData.append("photos", file));
+
+    try {
+      const res = await fetch(
+        `/api/jobs/${createdJob.id}/warranty-card-photos`,
+        { method: "POST", body: formData }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setWarrantyCardError(data.error ?? "Failed to upload warranty card photos");
+        return;
+      }
+      if (Array.isArray(data.warrantyCardPhotos)) {
+        setWarrantyCardUrls(data.warrantyCardPhotos);
+      }
+    } catch {
+      setWarrantyCardError("Failed to upload warranty card photos");
+    } finally {
+      setWarrantyCardUploading(false);
+      e.target.value = "";
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -225,6 +309,11 @@ export default function NewJobPage() {
       formData.set("accessories", JSON.stringify(accessoriesList));
     }
     photoFiles.forEach((file) => formData.append("photos", file));
+    if (isWarranty) {
+      warrantyCardFiles.forEach((file) =>
+        formData.append("warrantyCardPhotos", file)
+      );
+    }
 
     const res = await fetch("/api/jobs", {
       method: "POST",
@@ -269,14 +358,6 @@ export default function NewJobPage() {
     );
   }
 
-  if (role === "technician") {
-    return (
-      <AppShell>
-        <p className="text-center text-slate-500">Technicians cannot create job cards.</p>
-      </AppShell>
-    );
-  }
-
   if (createdJob) {
     return (
       <AppShell>
@@ -307,7 +388,90 @@ export default function NewJobPage() {
             </CardContent>
           </Card>
 
-          <ReceiptActions job={createdJob} autoPoll />
+          <ReceiptActions job={createdJob} autoPoll reprintOnly />
+
+          {isWarranty && warrantyCardFiles.length === 0 && (
+            <Card className="border border-sky-200 bg-sky-50">
+              <CardContent className="space-y-3 p-4">
+                <div>
+                  <p className="text-sm font-medium text-sky-900">
+                    Warranty card photos{" "}
+                    <span className="font-normal text-sky-600">(optional)</span>
+                  </p>
+                  <p className="text-xs text-sky-700">
+                    Attach up to {MAX_WARRANTY_CARD_PHOTOS} photos of the warranty card
+                  </p>
+                </div>
+                <input
+                  ref={warrantyCardSuccessInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={
+                    warrantyCardUploading ||
+                    warrantyCardUrls.length >= MAX_WARRANTY_CARD_PHOTOS
+                  }
+                  onChange={handleWarrantyCardUpload}
+                  className="sr-only"
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  onClick={() => warrantyCardSuccessInputRef.current?.click()}
+                  disabled={
+                    warrantyCardUploading ||
+                    warrantyCardUrls.length >= MAX_WARRANTY_CARD_PHOTOS
+                  }
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-sky-400 bg-white text-sm font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {warrantyCardUploading
+                    ? "Uploading…"
+                    : warrantyCardUrls.length >= MAX_WARRANTY_CARD_PHOTOS
+                      ? "Maximum photos added"
+                      : `Add warranty card photo (${warrantyCardUrls.length}/${MAX_WARRANTY_CARD_PHOTOS})`}
+                </button>
+                {warrantyCardError && (
+                  <p className="text-xs text-red-600">{warrantyCardError}</p>
+                )}
+                {warrantyCardUrls.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {warrantyCardUrls.map((url, i) => (
+                      <div key={url} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={`Warranty card ${i + 1}`}
+                          className="h-20 w-20 rounded-md border border-sky-200 object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {isWarranty && warrantyCardFiles.length > 0 && (
+            <Card className="border border-sky-200 bg-sky-50">
+              <CardContent className="space-y-2 p-4">
+                <p className="text-sm font-medium text-sky-900">
+                  Warranty card photos attached ({warrantyCardFiles.length})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {warrantyCardPreviews.map((preview, i) => (
+                    <div key={preview} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={preview}
+                        alt={`Warranty card ${i + 1}`}
+                        className="h-20 w-20 rounded-md border border-sky-200 object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex flex-col gap-2">
             <button
@@ -377,6 +541,7 @@ export default function NewJobPage() {
                 onClick={() => {
                   setIsWarranty(false);
                   setWarrantyPurchaseDate("");
+                  clearWarrantyCardPhotos();
                 }}
                 className={`rounded-md border px-3 py-2.5 text-sm font-semibold ${
                   !isWarranty
@@ -399,17 +564,90 @@ export default function NewJobPage() {
               </button>
             </div>
             {isWarranty && (
-              <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-700">
-                  Purchase date{" "}
-                  <span className="font-normal text-slate-400">(optional)</span>
-                </label>
-                <input
-                  type="date"
-                  value={warrantyPurchaseDate}
-                  onChange={(e) => setWarrantyPurchaseDate(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                />
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Purchase date{" "}
+                    <span className="font-normal text-slate-400">(optional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={warrantyPurchaseDate}
+                    onChange={(e) => setWarrantyPurchaseDate(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Warranty card photos{" "}
+                    <span className="font-normal text-slate-400">(optional, max {MAX_WARRANTY_CARD_PHOTOS})</span>
+                  </label>
+                  <input
+                    ref={warrantyCardFormInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    disabled={warrantyCardFiles.length >= MAX_WARRANTY_CARD_PHOTOS}
+                    onChange={handleWarrantyCardFormUpload}
+                    className="sr-only"
+                    aria-hidden
+                  />
+                  <button
+                    type="button"
+                    onClick={() => warrantyCardFormInputRef.current?.click()}
+                    disabled={warrantyCardFiles.length >= MAX_WARRANTY_CARD_PHOTOS}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-sky-400 bg-sky-50 text-sm font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className="h-5 w-5 shrink-0"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                    {warrantyCardFiles.length >= MAX_WARRANTY_CARD_PHOTOS
+                      ? "Maximum photos added"
+                      : `Add warranty card photo (${warrantyCardFiles.length}/${MAX_WARRANTY_CARD_PHOTOS})`}
+                  </button>
+                  <p className="text-xs text-slate-500">
+                    Tap to take a photo or choose from gallery
+                  </p>
+                  {warrantyCardPreviews.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {warrantyCardPreviews.map((preview, i) => (
+                        <div key={preview} className="relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={preview}
+                            alt={`Warranty card ${i + 1}`}
+                            className="h-20 w-20 rounded-md border border-sky-200 object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeWarrantyCardPhoto(i)}
+                            className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-xs text-white"
+                          >
+                            X
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>
@@ -559,13 +797,48 @@ export default function NewJobPage() {
                 Product Photos (max {MAX_PRODUCT_PHOTOS})
               </label>
               <input
+                ref={photoInputRef}
                 type="file"
                 accept="image/*"
                 multiple
                 disabled={photoFiles.length >= MAX_PRODUCT_PHOTOS}
                 onChange={handlePhotoUpload}
-                className="block w-full text-sm text-slate-600"
+                className="sr-only"
+                aria-hidden
               />
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoFiles.length >= MAX_PRODUCT_PHOTOS}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-emerald-400 bg-emerald-50 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-5 w-5 shrink-0"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                {photoFiles.length >= MAX_PRODUCT_PHOTOS
+                  ? "Maximum photos added"
+                  : `Add photo (${photoFiles.length}/${MAX_PRODUCT_PHOTOS})`}
+              </button>
+              <p className="text-xs text-slate-500">
+                Tap to take a photo or choose from gallery
+              </p>
               {photoPreviews.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {photoPreviews.map((preview, i) => (

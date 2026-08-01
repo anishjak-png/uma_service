@@ -5,9 +5,10 @@ import { useState } from "react";
 type WhatsAppActionsProps = {
   jobId: string;
   jobStatus: string;
+  compact?: boolean;
 };
 
-export function WhatsAppActions({ jobId, jobStatus }: WhatsAppActionsProps) {
+export function WhatsAppActions({ jobId, jobStatus, compact = false }: WhatsAppActionsProps) {
   const [sending, setSending] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
@@ -55,10 +56,40 @@ export function WhatsAppActions({ jobId, jobStatus }: WhatsAppActionsProps) {
   }
 
   if (!canSend) {
+    if (compact) return null;
     return (
       <p className="text-xs text-slate-500">
         WhatsApp messages are not configured for Delivered jobs.
       </p>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="space-y-1">
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={sendWhatsApp}
+            disabled={sending}
+            className="inline-flex h-8 flex-1 min-w-[5.5rem] items-center justify-center rounded-md bg-emerald-600 px-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {sending ? "Sending…" : "WhatsApp"}
+          </button>
+          <button
+            type="button"
+            onClick={resendWhatsApp}
+            disabled={sending}
+            className="inline-flex h-8 flex-1 min-w-[5.5rem] items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Resend
+          </button>
+        </div>
+        {statusMsg && (
+          <p className="text-[10px] font-medium text-emerald-700">{statusMsg}</p>
+        )}
+        {error && <p className="text-[10px] text-red-600">{error}</p>}
+      </div>
     );
   }
 

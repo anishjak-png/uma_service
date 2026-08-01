@@ -14,7 +14,8 @@ function getNavLinks(
 ): NavLink[] {
   if (role === "technician") {
     return [
-      { href: "/jobs/pending", label: "Home" },
+      { href: "/jobs/pending?scope=my", label: "Home" },
+      { href: "/jobs/new", label: "New Job" },
       { href: "/jobs/delivery", label: "Delivery" },
       { href: "/jobs/search", label: "Search" },
     ];
@@ -66,7 +67,8 @@ export function AppNav() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const links = getNavLinks(role, pendingDeviceCount);
-  const homeHref = role === "technician" ? "/jobs/pending" : "/dashboard";
+  const homeHref =
+    role === "technician" ? "/jobs/pending?scope=my" : "/dashboard";
   const userSubtitle = getUserSubtitle(role, staffName, technicianName);
   const adminTab = searchParams.get("tab");
   const showUniversalSearch = Boolean(role);
@@ -144,7 +146,7 @@ export function AppNav() {
       <nav className="border-b border-emerald-700 bg-emerald-900">
         <div
           className={`mx-auto grid max-w-lg gap-1 p-2 ${
-            links.length === 3 ? "grid-cols-3" : "grid-cols-5"
+            links.length === 4 ? "grid-cols-4" : links.length === 3 ? "grid-cols-3" : "grid-cols-5"
           }`}
         >
           {links.map((link) => {

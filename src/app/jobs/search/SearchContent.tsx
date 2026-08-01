@@ -178,8 +178,22 @@ export default function SearchContent() {
       }
 
       const res = await fetch(`/api/jobs/search?${params}`);
-      const data = await res.json();
-      setResponse(data);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        console.error(
+          "[job search]",
+          (data as { error?: string } | null)?.error ?? res.status
+        );
+        setResponse({
+          mode: "jobs",
+          searchType: "empty",
+          customer: null,
+          jobs: [],
+        });
+        setLoading(false);
+        return;
+      }
+      setResponse(data as SearchResponse);
       setLoading(false);
     },
     []

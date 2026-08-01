@@ -24,7 +24,7 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
-  const printJob = await enqueueReceiptPrint(jobCardId);
+  const printJob = await enqueueReceiptPrint(jobCardId, { reprint: true });
   return NextResponse.json({
     printJobId: printJob.id,
     status: printJob.status,

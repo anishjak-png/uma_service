@@ -17,13 +17,13 @@ export function CallCustomerButton({
       href={`tel:${digits}`}
       onClick={(e) => e.stopPropagation()}
       aria-label="Call customer"
-      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors hover:bg-emerald-200 ${className}`}
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors hover:bg-emerald-200 ${className}`}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"
         fill="currentColor"
-        className="h-4 w-4"
+        className="h-3 w-3"
         aria-hidden
       >
         <path

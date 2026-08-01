@@ -158,6 +158,7 @@ model JobCard {
   complaint            String
   physicalCondition    String?
   productPhotos        String?
+  warrantyCardPhotos   String?
   accessories          String?
   serviceAmount        Float?
   status               JobStatus       @default(Pending)
@@ -188,6 +189,8 @@ model JobCard {
   @@index([customerId])
   @@index([status])
   @@index([assignedTechnicianId])
+  @@index([assignedTechnicianId, status, receivedAt])
+  @@index([status, receivedAt])
   @@index([completedByTechnicianId])
   @@index([outsourcedToId])
   @@index([completedByOutsourceId])

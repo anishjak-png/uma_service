@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
+import { warrantyFieldsSupported } from "./prisma-statuses";
 
-/** Fields returned by list/search endpoints (job cards, delivery, pending). */
-export const jobListSelect = {
+const jobListSelectBase = {
   id: true,
   jobNumber: true,
   status: true,
@@ -15,13 +15,22 @@ export const jobListSelect = {
   customer: { select: { id: true, mobile: true, name: true } },
   assignedTechnician: { select: { name: true } },
   outsourcedTo: { select: { id: true, name: true } },
+} satisfies Prisma.JobCardSelect;
+
+const jobListSelectWarranty = {
   isWarranty: true,
   warrantyPurchaseDate: true,
   warrantyTakenAt: true,
 } satisfies Prisma.JobCardSelect;
 
-/** Fields returned by PATCH — client merges into existing job detail. */
-export const jobPatchSelect = {
+/** Resolve at query time so a stale dev Prisma bundle can omit warranty fields. */
+export function getJobListSelect(): Prisma.JobCardSelect {
+  return warrantyFieldsSupported()
+    ? { ...jobListSelectBase, ...jobListSelectWarranty }
+    : jobListSelectBase;
+}
+
+const jobPatchSelectBase = {
   id: true,
   status: true,
   serviceAmount: true,
@@ -35,9 +44,23 @@ export const jobPatchSelect = {
   completedByOutsource: { select: { id: true, name: true } },
   accessories: true,
   outsourcedAt: true,
+} satisfies Prisma.JobCardSelect;
+
+const jobPatchSelectWarranty = {
   isWarranty: true,
   warrantyPurchaseDate: true,
   warrantyTakenAt: true,
 } satisfies Prisma.JobCardSelect;
 
-export type JobListRow = Prisma.JobCardGetPayload<{ select: typeof jobListSelect }>;
+export function getJobPatchSelect(): Prisma.JobCardSelect {
+  return warrantyFieldsSupported()
+    ? { ...jobPatchSelectBase, ...jobPatchSelectWarranty }
+    : jobPatchSelectBase;
+}
+
+/** @deprecated Use getJobListSelect() in API routes */
+export const jobListSelect = getJobListSelect();
+
+export type JobListRow = Prisma.JobCardGetPayload<{
+  select: typeof jobListSelectBase & typeof jobListSelectWarranty;
+}>;

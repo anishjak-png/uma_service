@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { revokeOtherApprovedDevices } from "@/lib/staff-auth";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -21,7 +22,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     );
   }
 
-  const device = await prisma.staffDevice.findUnique({ where: { id } });
+  const device = await prisma.staffDevice.findUnique({
+    where: { id },
+    include: {
+      staffUser: { select: { id: true, name: true, mobile: true, role: true } },
+    },
+  });
   if (!device) {
     return NextResponse.json({ error: "Device not found" }, { status: 404 });
   }
@@ -46,6 +52,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       },
     },
   });
+
+  if (
+    action === "approve" &&
+    updated.staffUser.role !== "admin"
+  ) {
+    await revokeOtherApprovedDevices(updated.staffUserId, updated.deviceId);
+  }
 
   return NextResponse.json({
     device: {

@@ -21,14 +21,26 @@ import {
 import { runPostJobCreateTasks } from "@/lib/job-create-background";
 import { canCreateJob } from "@/lib/auth";
 import { getSession } from "@/lib/session";
-import { ACTIVE_STATUSES, MAX_PRODUCT_PHOTOS } from "@/lib/constants";
-import { jobListSelect } from "@/lib/job-selects";
+import { ACTIVE_JOB_STATUSES, WARRANTY_JOB_STATUSES, warrantyFieldsSupported } from "@/lib/prisma-statuses";
+import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
+import { getJobListSelect } from "@/lib/job-selects";
 import {
   isSupabaseStorageConfigured,
   type PhotoBufferPayload,
 } from "@/lib/supabase-storage";
 
 export async function GET(request: NextRequest) {
+  try {
+    return await listJobs(request);
+  } catch (error) {
+    console.error("[GET /api/jobs]", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to load jobs";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function listJobs(request: NextRequest) {
   const session = await getSession();
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim() ?? "";
@@ -67,24 +79,74 @@ export async function GET(request: NextRequest) {
   } else if (deliveryOnly) {
     where.status = { in: ["Ready", "Return"] };
   } else if (warrantyOnly) {
-    where.status = { in: ["WarrantyPending", "WarrantyWithCompany"] };
+    if (!warrantyFieldsSupported() || WARRANTY_JOB_STATUSES.length === 0) {
+      return NextResponse.json([]);
+    }
+    where.status = { in: WARRANTY_JOB_STATUSES };
     where.isWarranty = true;
   } else if (activeOnly) {
-    where.status = { in: [...ACTIVE_STATUSES] };
+    if (ACTIVE_JOB_STATUSES.length === 0) {
+      return NextResponse.json([]);
+    }
+    where.status = { in: ACTIVE_JOB_STATUSES };
   }
 
   if (warrantyBrand) {
     where.brand = warrantyBrand;
-    where.isWarranty = true;
+    if (warrantyFieldsSupported()) {
+      where.isWarranty = true;
+    }
+  }
+
+  const outsourcedToId = searchParams.get("outsourcedToId")?.trim();
+  if (outsourcedToId) {
+    where.outsourcedToId = outsourcedToId;
   }
 
   const isMobileSearch = detectSearchQueryType(q) === "mobile";
+  const pageParam = searchParams.get("page");
+  const paginate = pageParam != null;
+  const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
+  const parsedLimit = Number.parseInt(searchParams.get("limit") ?? "", 10);
+  const limit = paginate
+    ? Math.min(100, Math.max(1, parsedLimit || 25))
+    : isMobileSearch
+      ? 100
+      : 50;
+
+  const orderBy =
+    deliveryOnly && !q
+      ? { readyAt: "desc" as const }
+      : activeOnly
+        ? { receivedAt: "asc" as const }
+        : { receivedAt: "desc" as const };
+
+  if (paginate) {
+    const [total, jobs] = await Promise.all([
+      prisma.jobCard.count({ where }),
+      prisma.jobCard.findMany({
+        where,
+        select: getJobListSelect(),
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return NextResponse.json({
+      items: jobs,
+      total,
+      page,
+      pageSize: limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  }
 
   const jobs = await prisma.jobCard.findMany({
     where,
-    select: jobListSelect,
-    orderBy: deliveryOnly && !q ? { readyAt: "desc" } : { receivedAt: "desc" },
-    take: isMobileSearch ? 100 : 50,
+    select: getJobListSelect(),
+    orderBy,
+    take: limit,
   });
 
   return NextResponse.json(jobs);
@@ -127,6 +189,7 @@ async function createJob(request: NextRequest) {
   let complaint = "";
   let physicalCondition = "";
   let photoFiles: File[] = [];
+  let warrantyCardPhotoFiles: File[] = [];
   let accessoriesList: ReturnType<typeof parseAccessories> = [];
   let isWarranty = false;
   let warrantyPurchaseDateRaw: unknown;
@@ -152,6 +215,12 @@ async function createJob(request: NextRequest) {
       .getAll("photos")
       .filter((f): f is File => f instanceof File && f.size > 0)
       .slice(0, MAX_PRODUCT_PHOTOS);
+    if (isWarranty) {
+      warrantyCardPhotoFiles = form
+        .getAll("warrantyCardPhotos")
+        .filter((f): f is File => f instanceof File && f.size > 0)
+        .slice(0, MAX_WARRANTY_CARD_PHOTOS);
+    }
   } else {
     const body = await request.json();
     mobile = body.mobile ?? "";
@@ -227,6 +296,21 @@ async function createJob(request: NextRequest) {
     );
   }
 
+  if (warrantyCardPhotoFiles.length > 0) {
+    if (!isWarranty) {
+      return NextResponse.json(
+        { error: "Warranty card photos apply only to warranty jobs" },
+        { status: 400 }
+      );
+    }
+    if (!isSupabaseStorageConfigured()) {
+      return NextResponse.json(
+        { error: "Photo upload is not configured. Set Supabase Storage env vars." },
+        { status: 503 }
+      );
+    }
+  }
+
   let warrantyPurchaseDate: Date | null = null;
   if (isWarranty && warrantyPurchaseDateRaw != null && warrantyPurchaseDateRaw !== "") {
     const parsed = parseOptionalDateInput(warrantyPurchaseDateRaw);
@@ -255,11 +339,15 @@ async function createJob(request: NextRequest) {
     isWarranty ? Promise.resolve(null) : getDefaultTechnicianForAppliance(applianceType),
   ]);
 
+  const assignedTechnicianId = isWarranty ? null : defaultTech?.id ?? null;
+
+  const assignedTechName = defaultTech?.name ?? null;
+
   const initialStatus = isWarranty ? "WarrantyPending" : "Pending";
   const createNote = isWarranty
     ? `Warranty job created by ${creatorName} — ${brandName}`
-    : defaultTech
-      ? `Job card created by ${creatorName} — assigned to ${defaultTech.name}`
+    : assignedTechName
+      ? `Job card created by ${creatorName} — assigned to ${assignedTechName}`
       : `Job card created by ${creatorName}`;
 
   const job = await prisma.jobCard.create({
@@ -274,7 +362,7 @@ async function createJob(request: NextRequest) {
       accessories: serializeAccessories(accessoriesList),
       productPhotos: null,
       status: initialStatus,
-      assignedTechnicianId: isWarranty ? null : defaultTech?.id ?? null,
+      assignedTechnicianId,
       isWarranty,
       warrantyPurchaseDate: isWarranty ? warrantyPurchaseDate : null,
       createdBy: creatorName,
@@ -299,6 +387,10 @@ async function createJob(request: NextRequest) {
     });
     const photoBuffers =
       photoFiles.length > 0 ? await readPhotoBuffers(photoFiles) : [];
+    const warrantyCardBuffers =
+      warrantyCardPhotoFiles.length > 0
+        ? await readPhotoBuffers(warrantyCardPhotoFiles)
+        : [];
     await runPostJobCreateTasks({
       jobId: job.id,
       jobNumber,
@@ -306,6 +398,7 @@ async function createJob(request: NextRequest) {
       brand,
       complaint,
       photos: photoBuffers,
+      warrantyCardPhotos: warrantyCardBuffers,
     });
   });
 

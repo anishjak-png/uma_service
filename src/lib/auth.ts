@@ -34,11 +34,11 @@ export async function requireApprovedDevice() {
 }
 
 export function canCreateJob(role: StaffRole) {
-  return role === "reception" || role === "admin";
+  return role === "reception" || role === "admin" || role === "technician";
 }
 
 export function canDeliverJob(role: StaffRole) {
-  return role === "reception" || role === "admin";
+  return role === "reception" || role === "admin" || role === "technician";
 }
 
 export function canEditDeliveredJob(role: StaffRole) {

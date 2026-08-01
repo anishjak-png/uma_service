@@ -7,6 +7,7 @@ import {
 } from "@/lib/password";
 import {
   countApprovedDevices,
+  revokeOtherApprovedDevices,
   staffRoleToSessionRole,
   upsertStaffDevice,
 } from "@/lib/staff-auth";
@@ -71,6 +72,10 @@ export async function POST(request: NextRequest) {
     autoApprove,
     approvedById: autoApprove ? staffUser.id : undefined,
   });
+
+  if (staffUser.role !== "admin" && device.status !== "revoked") {
+    await revokeOtherApprovedDevices(staffUser.id, device.deviceId);
+  }
 
   const session = await getSession();
   session.isLoggedIn = true;

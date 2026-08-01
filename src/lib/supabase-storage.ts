@@ -1,4 +1,6 @@
-const MAX_PHOTOS = 3;
+import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
+
+const MAX_PHOTOS = MAX_PRODUCT_PHOTOS;
 
 function getStorageConfig() {
   const url = process.env.SUPABASE_URL;
@@ -18,17 +20,19 @@ export type PhotoBufferPayload = {
   name: string;
 };
 
-export async function uploadProductPhotoBuffers(
+async function uploadPhotoBuffersToFolder(
   photos: PhotoBufferPayload[],
-  jobNumber: string
+  jobNumber: string,
+  folder: string,
+  maxPhotos: number
 ): Promise<string[]> {
   const { url, key, bucket } = getStorageConfig();
   const urls: string[] = [];
 
-  for (const photo of photos.slice(0, MAX_PHOTOS)) {
+  for (const photo of photos.slice(0, maxPhotos)) {
     const ext = photo.name.split(".").pop()?.toLowerCase() || "jpg";
     const safeJobNumber = jobNumber.replace(/\s+/g, "-");
-    const path = `${safeJobNumber}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const path = `${safeJobNumber}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
     const res = await fetch(`${url}/storage/v1/object/${bucket}/${path}`, {
       method: "POST",
@@ -49,6 +53,25 @@ export async function uploadProductPhotoBuffers(
   }
 
   return urls;
+}
+
+export async function uploadProductPhotoBuffers(
+  photos: PhotoBufferPayload[],
+  jobNumber: string
+): Promise<string[]> {
+  return uploadPhotoBuffersToFolder(photos, jobNumber, "product", MAX_PHOTOS);
+}
+
+export async function uploadWarrantyCardPhotoBuffers(
+  photos: PhotoBufferPayload[],
+  jobNumber: string
+): Promise<string[]> {
+  return uploadPhotoBuffersToFolder(
+    photos,
+    jobNumber,
+    "warranty-card",
+    MAX_WARRANTY_CARD_PHOTOS
+  );
 }
 
 export async function uploadProductPhotos(

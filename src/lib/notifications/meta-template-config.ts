@@ -1,6 +1,7 @@
 import type { NotificationEventType } from "@prisma/client";
-import { APP_URL } from "@/lib/constants";
+import { getAppUrl } from "@/lib/constants";
 import { buildProductName } from "./job-context";
+import { toTrackingPathSlug } from "@/lib/jobs";
 import type {
   NotificationJobContext,
   NotificationSettingsDto,
@@ -122,7 +123,7 @@ function resolveMetaVariableValue(
       return job.jobNumber;
     case "tracking_link":
       if (!settings.trackingLinkEnabled) return "";
-      return `${APP_URL}/j/${encodeURIComponent(job.jobNumber)}`;
+      return `${getAppUrl()}/j/${toTrackingPathSlug(job.jobNumber)}`;
     case "service_amount":
       if (job.serviceAmount == null) return "";
       // Template body includes "Rs." — send numeric amount only for {{4}}
@@ -187,9 +188,9 @@ export function buildMetaTemplatePayload(
 
   let urlButtonParameter: string | undefined;
   if (definition.urlButtonVariable) {
-    urlButtonParameter =
+      urlButtonParameter =
       definition.urlButtonVariable === "job_number"
-        ? encodeURIComponent(job.jobNumber)
+        ? toTrackingPathSlug(job.jobNumber)
         : resolveMetaVariableValue(definition.urlButtonVariable, job, settings);
     if (!urlButtonParameter.trim()) {
       return {

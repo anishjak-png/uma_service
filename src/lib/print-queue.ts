@@ -4,18 +4,37 @@ import { prisma } from "./db";
 const DEFAULT_BRANCH_ID = process.env.PRINT_BRANCH_ID?.trim() || "main";
 const DEFAULT_PRINTER_ID = process.env.PRINT_PRINTER_ID?.trim() || "counter-1";
 
-export async function enqueueReceiptPrint(jobCardId: string) {
-  const existing = await prisma.printJob.findFirst({
-    where: {
-      jobCardId,
-      type: "receipt",
-      status: { in: ["Pending", "Printing"] },
-    },
-    select: { id: true },
-  });
+export async function enqueueReceiptPrint(
+  jobCardId: string,
+  options?: { reprint?: boolean }
+) {
+  const reprint = options?.reprint ?? false;
 
-  if (existing) {
-    return prisma.printJob.findUniqueOrThrow({ where: { id: existing.id } });
+  if (reprint) {
+    await prisma.printJob.updateMany({
+      where: {
+        jobCardId,
+        type: "receipt",
+        status: { in: ["Pending", "Printing"] },
+      },
+      data: {
+        status: "Failed",
+        errorMessage: "Superseded by new print request",
+      },
+    });
+  } else {
+    const existing = await prisma.printJob.findFirst({
+      where: {
+        jobCardId,
+        type: "receipt",
+        status: { in: ["Pending", "Printing"] },
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return prisma.printJob.findUniqueOrThrow({ where: { id: existing.id } });
+    }
   }
 
   return prisma.printJob.create({

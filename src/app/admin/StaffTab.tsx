@@ -26,6 +26,44 @@ type EditForm = {
   password: string;
 };
 
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  hint,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  hint?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="space-y-1">
+      <div className="relative">
+        <input
+          type={visible ? "text" : "password"}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 w-full rounded-md border border-slate-300 px-3 pr-20"
+          autoComplete="new-password"
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          aria-pressed={visible}
+        >
+          {visible ? "Hide" : "Show"}
+        </button>
+      </div>
+      {hint ? <p className="text-xs text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
@@ -242,12 +280,10 @@ export function StaffTab() {
                 ))}
               </select>
             )}
-            <input
-              type="password"
-              placeholder="Password (min 6 chars)"
+            <PasswordField
               value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              className="h-11 w-full rounded-md border border-slate-300 px-3"
+              onChange={(password) => setForm((f) => ({ ...f, password }))}
+              placeholder="Password (min 6 chars)"
             />
             <button
               type="button"
@@ -317,14 +353,13 @@ export function StaffTab() {
                     ))}
                   </select>
                 )}
-                <input
-                  type="password"
-                  placeholder="New password (leave blank to keep current)"
+                <PasswordField
                   value={editForm.password}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, password: e.target.value }))
+                  onChange={(password) =>
+                    setEditForm((f) => ({ ...f, password }))
                   }
-                  className="h-11 w-full rounded-md border border-slate-300 px-3"
+                  placeholder="New password (leave blank to keep current)"
+                  hint="Current password is stored securely and cannot be shown. Use Show to view what you type here."
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <button

@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { parseServiceAmount } from "@/lib/currency";
-import { jobPatchSelect } from "@/lib/job-selects";
+import { getJobPatchSelect } from "@/lib/job-selects";
 import {
   accessoryNames,
   staffActorName,
@@ -134,12 +134,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           `Product taken by ${existing.brand} for warranty service`;
       } else if (newStatus === "WarrantyPending") {
         const converting = !existing.isWarranty;
-        if (converting && session.role === "technician") {
-          return NextResponse.json(
-            { error: "Only reception or admin can convert a job to warranty" },
-            { status: 403 }
-          );
-        }
         data.status = "WarrantyPending";
         data.isWarranty = true;
         data.warrantyTakenAt = null;
@@ -380,7 +374,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         prisma.jobCard.update({
           where: { id: jobId },
           data,
-          select: jobPatchSelect,
+          select: getJobPatchSelect(),
         }),
       ]);
 
@@ -401,7 +395,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const job = await prisma.jobCard.update({
       where: { id: jobId },
       data,
-      select: jobPatchSelect,
+      select: getJobPatchSelect(),
     });
 
     return NextResponse.json(job);

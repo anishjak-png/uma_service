@@ -48,6 +48,22 @@ export function normalizeJobNumberQuery(q: string): string {
   return q.trim().toUpperCase();
 }
 
+/** URL path segment for tracking links — no spaces (WhatsApp-safe). */
+export function toTrackingPathSlug(jobNumber: string): string {
+  return normalizeJobNumberQuery(jobNumber).replace(/\s+/g, "");
+}
+
+/** Decode /j/[slug] back to stored job number format. */
+export function jobNumberFromTrackingPath(pathSegment: string): string {
+  let decoded = pathSegment.trim();
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // use raw segment when not percent-encoded
+  }
+  return normalizeJobNumberQuery(decoded.replace(/\+/g, " "));
+}
+
 export function formatMobileDisplay(mobile: string): string {
   const digits = normalizeMobile(mobile);
   if (digits.length !== 10) return mobile;
@@ -57,6 +73,16 @@ export function formatMobileDisplay(mobile: string): string {
 export function daysSince(date: Date): number {
   const diff = Date.now() - date.getTime();
   return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+/** Oldest received first — jobs with the most pending days appear at the top. */
+export function sortJobsByPendingDays<T extends { receivedAt: string }>(
+  jobs: T[]
+): T[] {
+  return [...jobs].sort(
+    (a, b) =>
+      new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime()
+  );
 }
 
 /** Date and time for job timestamps (received, completed, delivered). */
@@ -116,7 +142,7 @@ export function toDateInputValue(iso: string | Date | null | undefined): string 
   return `${y}-${m}-${d}`;
 }
 
-export function parseProductPhotos(raw: string | null | undefined): string[] {
+export function parsePhotoUrls(raw: string | null | undefined): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -125,6 +151,11 @@ export function parseProductPhotos(raw: string | null | undefined): string[] {
     return [];
   }
 }
+
+/** @deprecated Use parsePhotoUrls */
+export const parseProductPhotos = parsePhotoUrls;
+
+export const parseWarrantyCardPhotos = parsePhotoUrls;
 
 export type AccessoryItem = {
   name: string;

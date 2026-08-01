@@ -16,14 +16,13 @@ import {
 import { formatCurrency } from "@/lib/currency";
 import {
   daysSince,
-  formatAccessoryLabel,
   formatMobileDisplay,
   formatStatusChangedBy,
   formatDate,
   formatDateTime,
   parseProductPhotos,
+  parseWarrantyCardPhotos,
   parseAccessories,
-  normalizeMobile,
   toDateInputValue,
   type AccessoryItem,
 } from "@/lib/jobs";
@@ -42,6 +41,7 @@ type JobDetail = {
   complaint: string;
   physicalCondition?: string | null;
   productPhotos?: string | null;
+  warrantyCardPhotos?: string | null;
   remarks?: string | null;
   serviceAmount?: number | null;
   receivedAt: string;
@@ -102,37 +102,96 @@ function mergeJobPatch(prev: JobDetail, patch: JobPatchResponse): JobDetail {
   };
 }
 
-function DetailSection({
+function CompactCard({
   title,
   children,
+  className = "",
 }: {
-  title: string;
+  title?: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-        {title}
-      </h3>
-      <div className="space-y-3">{children}</div>
+    <section
+      className={`rounded-lg border border-slate-200 bg-white p-3 shadow-sm ${className}`}
+    >
+      {title ? (
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {title}
+        </h3>
+      ) : null}
+      <div className="space-y-1">{children}</div>
     </section>
   );
 }
 
-function DetailRow({
+function CompactRow({
   label,
   children,
+  className = "",
+  title,
+  wrap = false,
 }: {
   label: string;
   children: ReactNode;
+  className?: string;
+  title?: string;
+  wrap?: boolean;
 }) {
   return (
-    <div>
-      <p className="text-sm font-medium text-slate-600">{label}</p>
-      <div className="mt-0.5 text-base text-slate-900">{children}</div>
+    <div className={`flex gap-2 text-sm leading-snug ${wrap ? "items-start" : "items-center"} ${className}`}>
+      <span className="w-[5.5rem] shrink-0 text-xs font-medium text-slate-500">
+        {label}
+      </span>
+      <span
+        className={`min-w-0 flex-1 text-slate-900 ${wrap ? "whitespace-normal break-words text-xs leading-snug" : "truncate"}`}
+        title={title}
+      >
+        {children}
+      </span>
     </div>
   );
 }
+
+const STATUS_ACTION_ORDER: JobStatusValue[] = [
+  "Ready",
+  "WaitingForCustomerApproval",
+  "Return",
+  "Outsourced",
+  "WarrantyPending",
+];
+
+function sortStatusActions(statuses: JobStatusValue[]): JobStatusValue[] {
+  const order = new Map(STATUS_ACTION_ORDER.map((status, index) => [status, index]));
+  return [...statuses].sort(
+    (a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99)
+  );
+}
+
+function getStatusActionLabel(status: JobStatusValue, isWarranty: boolean): string {
+  if (status === "WarrantyPending") {
+    return isWarranty ? "Warranty (at store)" : "Warranty";
+  }
+  return STATUS_ACTION_LABELS[status] ?? STATUS_LABELS[status];
+}
+
+function getStatusActionColor(status: JobStatusValue): string {
+  if (status === "Outsourced") return "bg-purple-600 hover:bg-purple-700";
+  if (status === "WarrantyPending") return "bg-sky-600 hover:bg-sky-700";
+  return "bg-emerald-600 hover:bg-emerald-700";
+}
+
+function formatAccessoryWithQty(item: AccessoryItem): string {
+  return `${item.name} × ${item.qty}`;
+}
+
+const STATUS_ACTION_LABELS: Partial<Record<JobStatusValue, string>> = {
+  Ready: "Ready",
+  WaitingForCustomerApproval: "Waiting for approval",
+  Return: "Return",
+  Outsourced: "Outsourced",
+  WarrantyPending: "Warranty",
+};
 
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -422,44 +481,72 @@ export default function JobDetailPage() {
     staffRole,
     { isWarranty: Boolean(job.isWarranty) }
   );
-  const backHref = role === "technician" ? "/jobs/pending" : "/jobs/search";
+  const canConvertToWarranty =
+    !job.isWarranty && selectableStatuses.includes("WarrantyPending");
+  const statusActionStatuses = canConvertToWarranty
+    ? selectableStatuses.filter((status) => status !== "WarrantyPending")
+    : selectableStatuses;
+  const orderedStatusActions = sortStatusActions([
+    ...statusActionStatuses,
+    ...(canConvertToWarranty ? (["WarrantyPending"] as JobStatusValue[]) : []),
+  ]);
+  const backHref = role === "technician" ? "/jobs/pending?scope=my" : "/jobs/search";
   const photos = parseProductPhotos(job.productPhotos);
+  const warrantyCardPhotos = parseWarrantyCardPhotos(job.warrantyCardPhotos);
   const isStaff = role === "reception" || role === "admin";
   const isAdmin = role === "admin";
   const showFinancials = isStaff || isAdmin;
   const isLocked = isDeliveredTerminal(job.status) && !isAdmin;
   const canAdminEditAmount = isAdmin && job.readyAt != null && !isLocked;
 
-  const callDigits = normalizeMobile(job.customer.mobile);
+  const accessories = parseAccessories(job.accessories);
+  const productLine = [job.brand, job.applianceType, job.model]
+    .filter(Boolean)
+    .join(" · ");
+  const assigneeLabel =
+    job.isWarranty
+      ? job.status === "WarrantyWithCompany"
+        ? `With company${job.warrantyTakenAt ? ` · ${formatDateTime(job.warrantyTakenAt)}` : ""}`
+        : "At store"
+      : job.status === "Outsourced" && job.outsourcedTo
+        ? job.outsourcedTo.name
+        : job.assignedTechnician?.name ?? "—";
+  const completedByLabel =
+    job.completedByOutsource?.name ??
+    job.completedByTechnician?.name ??
+    "—";
 
   return (
     <AppShell>
-      <div className="space-y-5">
-        <Link href={backHref} className="text-sm font-medium text-emerald-600 hover:underline">
+      <div className="space-y-2">
+        <Link
+          href={backHref}
+          className="inline-block text-xs font-medium text-emerald-600 hover:underline"
+        >
           ← Back
         </Link>
 
-        <div>
+        <CompactCard>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-900">{job.jobNumber}</h1>
+            <h1 className="text-lg font-bold text-slate-900">{job.jobNumber}</h1>
             <JobStatusBadge status={job.status} />
+            {showFinancials && job.serviceAmount != null && (
+              <span className="ml-auto text-sm font-semibold text-emerald-700">
+                {formatCurrency(job.serviceAmount)}
+              </span>
+            )}
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            Received {formatDateTime(job.receivedAt)}
-            <span className="ml-1">
-              ({daysSince(new Date(job.receivedAt))} days ago)
-            </span>
+          <p className="mt-1 truncate text-xs text-slate-500">
+            Received {formatDateTime(job.receivedAt)} ({daysSince(new Date(job.receivedAt))}d)
+            {job.createdBy ? ` · Created by ${formatStatusChangedBy(job.createdBy)}` : ""}
+            {job.readyAt ? ` · Ready ${formatDateTime(job.readyAt)}` : ""}
+            {job.deliveredAt ? ` · Delivered ${formatDateTime(job.deliveredAt)}` : ""}
           </p>
-          {job.createdBy && (
-            <p className="mt-1 text-sm text-slate-500">
-              Created by {formatStatusChangedBy(job.createdBy)}
-            </p>
-          )}
-        </div>
+        </CompactCard>
 
         {showReadyForm && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm space-y-3">
-            <h3 className="font-semibold text-emerald-900">Mark as Ready</h3>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 shadow-sm space-y-2">
+            <h3 className="text-sm font-semibold text-emerald-900">Mark as Ready</h3>
             <p className="text-sm text-emerald-800">Service amount is required.</p>
             <input
               type="number"
@@ -514,8 +601,8 @@ export default function JobDetailPage() {
         )}
 
         {showOutsourceForm && (
-          <div className="rounded-lg border border-purple-200 bg-purple-50 p-5 shadow-sm space-y-3">
-            <h3 className="font-semibold text-purple-900">Send to Outsource</h3>
+          <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 shadow-sm space-y-2">
+            <h3 className="text-sm font-semibold text-purple-900">Send to Outsource</h3>
             <select
               value={selectedPartnerId}
               onChange={(e) => setSelectedPartnerId(e.target.value)}
@@ -547,8 +634,8 @@ export default function JobDetailPage() {
         )}
 
         {showConvertWarrantyForm && (
-          <div className="rounded-lg border border-sky-200 bg-sky-50 p-5 shadow-sm space-y-3">
-            <h3 className="font-semibold text-sky-900">Convert to Warranty</h3>
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 shadow-sm space-y-2">
+            <h3 className="text-sm font-semibold text-sky-900">Convert to Warranty</h3>
             <p className="text-sm text-sky-800">
               Moves this job to the warranty queue. Purchase date is optional.
             </p>
@@ -582,266 +669,226 @@ export default function JobDetailPage() {
           </div>
         )}
 
-        <DetailSection title="Actions">
+        <CompactCard title="Actions">
           {!showReadyForm &&
             !showOutsourceForm &&
-            !showConvertWarrantyForm &&
-            selectableStatuses.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-slate-600">Change Status</p>
-              <div className="grid grid-cols-2 gap-2">
-                {selectableStatuses.map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => handleStatusChange(status)}
-                    disabled={saving}
-                    className={`rounded-md py-3 text-sm font-medium text-white disabled:opacity-50 ${
-                      !job.isWarranty && status === "WarrantyPending"
-                        ? "bg-sky-600 hover:bg-sky-700"
-                        : "bg-emerald-600 hover:bg-emerald-700"
-                    }`}
-                  >
-                    {!job.isWarranty && status === "WarrantyPending"
-                      ? "Convert to Warranty"
-                      : STATUS_LABELS[status]}
-                  </button>
-                ))}
-              </div>
+            !showConvertWarrantyForm && (
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {orderedStatusActions.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => handleStatusChange(status)}
+                  disabled={saving}
+                  className={`rounded-md py-2 text-xs font-medium text-white disabled:opacity-50 ${getStatusActionColor(status)}`}
+                >
+                  {getStatusActionLabel(status, Boolean(job.isWarranty))}
+                </button>
+              ))}
+              <ReceiptActions
+                counterOnly
+                actionTab
+                job={{
+                  id: job.id,
+                  jobNumber: job.jobNumber,
+                  receivedAt: job.receivedAt,
+                  applianceType: job.applianceType,
+                  brand: job.brand,
+                  model: job.model,
+                  complaint: job.complaint,
+                  accessories: job.accessories,
+                  customer: job.customer,
+                }}
+              />
             </div>
           )}
 
-          {callDigits.length === 10 && (
-            <a
-              href={`tel:${callDigits}`}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
-            >
-              Call Customer
-            </a>
+          {(isStaff || role === "technician") && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {job.status !== "Delivered" && (
+                <Link
+                  href={`/jobs/delivery?q=${encodeURIComponent(job.jobNumber)}`}
+                  className="inline-flex h-8 flex-1 min-w-[5.5rem] items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Delivery
+                </Link>
+              )}
+              {isStaff && (
+                <WhatsAppActions jobId={job.id} jobStatus={job.status} compact />
+              )}
+            </div>
           )}
+        </CompactCard>
 
-          <ReceiptActions job={job} variant="jobDetail" />
-
-          {isStaff && <WhatsAppActions jobId={job.id} jobStatus={job.status} />}
-
-          {job.status !== "Delivered" && isStaff && (
-            <Link
-              href={`/jobs/delivery?q=${encodeURIComponent(job.jobNumber)}`}
-              className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Go to Delivery
-            </Link>
-          )}
-        </DetailSection>
-
-        <DetailSection title="Customer Details">
-          <DetailRow label="Customer Name">
+        <CompactCard title="Details">
+          <CompactRow label="Customer">
             {job.customer.name ?? "—"}
-          </DetailRow>
-          <DetailRow label="Mobile Number">
-            <div className="flex items-center gap-2">
-              <span>{formatMobileDisplay(job.customer.mobile)}</span>
+          </CompactRow>
+          <CompactRow label="Mobile">
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <span className="truncate">{formatMobileDisplay(job.customer.mobile)}</span>
               <CallCustomerButton mobile={job.customer.mobile} />
-            </div>
-          </DetailRow>
-          <DetailRow label="Customer ID">
-            <span className="break-all font-mono text-sm">{job.customer.id}</span>
-          </DetailRow>
-        </DetailSection>
+            </span>
+          </CompactRow>
+          <CompactRow label="Product">{productLine || "—"}</CompactRow>
 
-        <DetailSection title="Product Details">
-          <DetailRow label="Product Type">{job.applianceType}</DetailRow>
-          <DetailRow label="Brand">{job.brand}</DetailRow>
-          <DetailRow label="Model">{job.model ?? "—"}</DetailRow>
-        </DetailSection>
-
-        {(parseAccessories(job.accessories).length > 0 || (!isLocked && isStaff)) && (
-          <DetailSection title="Accessories Received">
-            {!editingAccessories ? (
-              <div className="space-y-2">
-                {parseAccessories(job.accessories).length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {parseAccessories(job.accessories).map((item) => (
-                      <span
-                        key={item.name}
-                        className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
-                      >
-                        {formatAccessoryLabel(item)}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-base text-slate-500">None recorded</p>
-                )}
-                {!isLocked && isStaff && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const accessories = parseAccessories(job.accessories);
-                      setAccessoryQty(accessoriesToQtyMap(accessories));
-                      const other = otherFromAccessories(accessories);
-                      setOtherAccessory(other.text);
-                      setOtherAccessoryQty(other.qty);
-                      setEditingAccessories(true);
-                    }}
-                    className="text-sm font-medium text-emerald-700 hover:underline"
-                  >
-                    Edit accessories
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {accessoryOptions.length > 0 ? (
-                  <div className="space-y-2">
-                    {accessoryOptions.map((item) => {
-                      const checked = accessoryQty[item] != null;
-                      return (
-                        <div
-                          key={item}
-                          className="flex items-center gap-2 text-sm text-slate-700"
-                        >
-                          <label className="flex min-w-0 flex-1 items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                toggleAccessory(item, e.target.checked)
-                              }
-                              className="h-4 w-4 rounded border-slate-300"
-                            />
-                            <span className="truncate">{item}</span>
-                          </label>
-                          {checked && (
-                            <input
-                              type="number"
-                              min={1}
-                              max={999}
-                              value={accessoryQty[item]}
-                              onChange={(e) =>
-                                setQty(item, Number(e.target.value))
-                              }
-                              className="h-8 w-16 shrink-0 rounded-md border border-slate-300 px-2 text-center text-sm"
-                              aria-label={`${item} quantity`}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    No accessories configured for this product type.
+          <div className="flex items-start gap-2 text-sm leading-snug">
+            <span className="w-[5.5rem] shrink-0 text-xs font-medium text-slate-500">
+              Accessories
+            </span>
+            <div className="min-w-0 flex-1">
+              {!editingAccessories ? (
+                <div className="flex min-w-0 items-start gap-2">
+                  <p className="whitespace-normal break-words text-xs leading-snug text-slate-900">
+                    {accessories.length > 0
+                      ? accessories.map(formatAccessoryWithQty).join(", ")
+                      : "No accessory"}
                   </p>
-                )}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Other</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={otherAccessory}
-                      onChange={(e) => setOtherAccessory(e.target.value)}
-                      placeholder="Optional — other item received"
-                      className="flex h-10 min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                    {otherAccessory.trim() && (
-                      <input
-                        type="number"
-                        min={1}
-                        max={999}
-                        value={otherAccessoryQty}
-                        onChange={(e) =>
-                          setOtherAccessoryQty(
-                            Math.max(
-                              1,
-                              Math.min(999, Math.floor(Number(e.target.value)) || 1)
-                            )
-                          )
-                        }
-                        className="h-10 w-16 shrink-0 rounded-md border border-slate-300 px-2 text-center text-sm"
-                        aria-label="Other accessory quantity"
-                      />
+                  {!isLocked && isStaff && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccessoryQty(accessoriesToQtyMap(accessories));
+                        const other = otherFromAccessories(accessories);
+                        setOtherAccessory(other.text);
+                        setOtherAccessoryQty(other.qty);
+                        setEditingAccessories(true);
+                      }}
+                      className="shrink-0 text-xs font-medium text-emerald-700 hover:underline"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+              ) : (
+                  <div className="space-y-2">
+                    {accessoryOptions.length > 0 ? (
+                      <div className="max-h-32 space-y-1 overflow-y-auto">
+                        {accessoryOptions.map((item) => {
+                          const checked = accessoryQty[item] != null;
+                          return (
+                            <div
+                              key={item}
+                              className="flex items-center gap-2 text-xs text-slate-700"
+                            >
+                              <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) =>
+                                    toggleAccessory(item, e.target.checked)
+                                  }
+                                  className="h-3.5 w-3.5 rounded border-slate-300"
+                                />
+                                <span className="truncate">{item}</span>
+                              </label>
+                              {checked && (
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={999}
+                                  value={accessoryQty[item]}
+                                  onChange={(e) =>
+                                    setQty(item, Number(e.target.value))
+                                  }
+                                  className="h-7 w-12 shrink-0 rounded border border-slate-300 px-1 text-center text-xs"
+                                  aria-label={`${item} quantity`}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">
+                        No accessories for this product type.
+                      </p>
                     )}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={otherAccessory}
+                        onChange={(e) => setOtherAccessory(e.target.value)}
+                        placeholder="Other item"
+                        className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 px-2 text-xs"
+                      />
+                      {otherAccessory.trim() && (
+                        <input
+                          type="number"
+                          min={1}
+                          max={999}
+                          value={otherAccessoryQty}
+                          onChange={(e) =>
+                            setOtherAccessoryQty(
+                              Math.max(
+                                1,
+                                Math.min(
+                                  999,
+                                  Math.floor(Number(e.target.value)) || 1
+                                )
+                              )
+                            )
+                          }
+                          className="h-8 w-12 shrink-0 rounded-md border border-slate-300 px-1 text-center text-xs"
+                          aria-label="Other accessory quantity"
+                        />
+                      )}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={saveAccessories}
+                        disabled={saving}
+                        className="flex-1 rounded-md bg-emerald-600 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingAccessories(false)}
+                        className="flex-1 rounded-md border border-slate-300 py-1.5 text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={saveAccessories}
-                    disabled={saving}
-                    className="flex-1 rounded-md bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingAccessories(false)}
-                    className="flex-1 rounded-md border border-slate-300 py-2 text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                )}
               </div>
-            )}
-          </DetailSection>
-        )}
+            </div>
 
-        <DetailSection title="Complaint">
-          <p className="text-base leading-relaxed text-slate-800">{job.complaint}</p>
-        </DetailSection>
-
-        {job.physicalCondition && (
-          <DetailSection title="Physical Condition">
-            <p className="text-base leading-relaxed text-slate-800">
+          <CompactRow label="Complaint" title={job.complaint}>
+            {job.complaint}
+          </CompactRow>
+          {job.physicalCondition && (
+            <CompactRow label="Condition" title={job.physicalCondition}>
               {job.physicalCondition}
-            </p>
-          </DetailSection>
-        )}
-
-        <DetailSection title="Current Status">
-          <JobStatusBadge status={job.status} />
-          {job.readyAt && (
-            <DetailRow label="Completed">
-              {formatDateTime(job.readyAt)}
-            </DetailRow>
+            </CompactRow>
           )}
-          {job.deliveredAt && (
-            <DetailRow label="Delivered">
-              {formatDateTime(job.deliveredAt)}
-            </DetailRow>
-          )}
-        </DetailSection>
+          <CompactRow label={job.isWarranty ? "Warranty" : job.status === "Outsourced" ? "Outsource" : "Assignee"}>
+            {assigneeLabel}
+            {!job.isWarranty && job.status === "Outsourced" && job.outsourcedAt
+              ? ` · ${formatDateTime(job.outsourcedAt)}`
+              : ""}
+          </CompactRow>
+          <CompactRow label="Completed">{completedByLabel}</CompactRow>
 
-        {job.isWarranty ? (
-          <DetailSection title="Warranty Brand">
-            <p className="text-base font-medium text-sky-800">{job.brand}</p>
-            {job.status === "WarrantyWithCompany" && (
-              <p className="mt-1 text-sm font-bold text-slate-900">
-                With company
-                {job.warrantyTakenAt
-                  ? ` · ${formatDateTime(job.warrantyTakenAt)}`
-                  : ""}
-              </p>
-            )}
-            {job.status === "WarrantyPending" && (
-              <p className="mt-1 text-sm font-bold text-slate-900">At store</p>
-            )}
-            {isStaff && !isLocked ? (
-              editingPurchaseDate ? (
-                <div className="space-y-2 pt-1">
-                  <label className="block text-sm font-medium text-slate-600">
-                    Purchase date{" "}
-                    <span className="font-normal text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={purchaseDateEdit}
-                    onChange={(e) => setPurchaseDateEdit(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                  />
-                  <div className="flex gap-2">
+          {job.isWarranty && (
+            <div className="flex items-center gap-2 text-sm leading-snug">
+              <span className="w-[5.5rem] shrink-0 text-xs font-medium text-slate-500">
+                Purchased
+              </span>
+              <div className="min-w-0 flex-1">
+                {isStaff && !isLocked && editingPurchaseDate ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={purchaseDateEdit}
+                      onChange={(e) => setPurchaseDateEdit(e.target.value)}
+                      className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 px-2 text-xs"
+                    />
                     <button
                       type="button"
                       onClick={savePurchaseDate}
                       disabled={saving}
-                      className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                      className="rounded-md bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
                     >
                       Save
                     </button>
@@ -853,161 +900,129 @@ export default function JobDetailPage() {
                         );
                         setEditingPurchaseDate(false);
                       }}
-                      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
                     >
                       Cancel
                     </button>
                   </div>
-                </div>
-              ) : (
-                <div className="pt-1">
-                  <p className="text-sm font-medium text-slate-600">
-                    Purchase date
-                  </p>
-                  <div className="mt-0.5 flex items-center justify-between gap-2">
-                    <p className="text-base text-slate-900">
+                ) : (
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-slate-900">
                       {job.warrantyPurchaseDate
                         ? formatDate(job.warrantyPurchaseDate)
                         : "—"}
-                    </p>
+                    </span>
+                    {isStaff && !isLocked && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingPurchaseDate(true)}
+                        className="shrink-0 text-xs font-medium text-sky-700 hover:underline"
+                      >
+                        {job.warrantyPurchaseDate ? "Edit" : "Add"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(job.remarks || !isLocked) && (
+            <div className="flex items-start gap-2 text-sm leading-snug">
+              <span className="w-[5.5rem] shrink-0 text-xs font-medium text-slate-500">
+                Remarks
+              </span>
+              <div className="min-w-0 flex-1">
+                {!isLocked ? (
+                  <div className="space-y-1.5">
+                    <textarea
+                      value={remarks}
+                      onChange={(e) => setRemarks(e.target.value)}
+                      placeholder="Notes for this job"
+                      rows={2}
+                      className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    />
                     <button
-                      type="button"
-                      onClick={() => setEditingPurchaseDate(true)}
-                      className="text-sm font-medium text-sky-700 hover:underline"
+                      onClick={handleSaveRemarks}
+                      disabled={saving}
+                      className="h-7 w-full rounded-md bg-emerald-600 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
                     >
-                      {job.warrantyPurchaseDate ? "Edit" : "Add"}
+                      Save Remarks
                     </button>
                   </div>
-                </div>
-              )
-            ) : (
-              <DetailRow label="Purchase date">
-                {job.warrantyPurchaseDate
-                  ? formatDate(job.warrantyPurchaseDate)
-                  : "—"}
-              </DetailRow>
-            )}
-          </DetailSection>
-        ) : job.status === "Outsourced" && job.outsourcedTo ? (
-          <DetailSection title="Outsource Partner">
-            <p className="text-base font-medium text-purple-800">
-              With {job.outsourcedTo.name}
-            </p>
-            {job.outsourcedAt && (
-              <p className="text-sm text-slate-500">
-                Sent {formatDateTime(job.outsourcedAt)}
-              </p>
-            )}
-          </DetailSection>
-        ) : (
-          <DetailSection title="Assigned Technician">
-            <p className="text-base text-slate-900">
-              {job.assignedTechnician?.name ?? "—"}
-            </p>
-          </DetailSection>
-        )}
-
-        {job.completedByOutsource ? (
-          <DetailSection title="Completed By (Outsource)">
-            <p className="text-base text-slate-900">{job.completedByOutsource.name}</p>
-          </DetailSection>
-        ) : (
-          <DetailSection title="Completed By Technician">
-            <p className="text-base text-slate-900">
-              {job.completedByTechnician?.name ?? "—"}
-            </p>
-          </DetailSection>
-        )}
-
-        {showFinancials && (
-          <DetailSection title="Service Amount">
-            {job.serviceAmount != null ? (
-              <p className="text-xl font-semibold text-emerald-700">
-                {formatCurrency(job.serviceAmount)}
-                {job.readyAt && !isAdmin && (
-                  <span className="ml-2 text-sm font-normal text-slate-400">
-                    (locked)
-                  </span>
+                ) : (
+                  <p className="truncate text-slate-900">{job.remarks}</p>
                 )}
-              </p>
-            ) : (
-              <p className="text-base text-slate-500">Not set</p>
-            )}
-          </DetailSection>
-        )}
-
-        {(job.remarks || !isLocked) && (
-          <DetailSection title="Remarks">
-            {!isLocked ? (
-              <div className="space-y-3">
-                <textarea
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="e.g. Motor replaced, waiting for spare, customer informed"
-                  rows={3}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                />
-                <button
-                  onClick={handleSaveRemarks}
-                  disabled={saving}
-                  className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  Save Remarks
-                </button>
               </div>
-            ) : (
-              <p className="text-base leading-relaxed text-slate-700">
-                {job.remarks}
-              </p>
-            )}
-          </DetailSection>
-        )}
+            </div>
+          )}
+        </CompactCard>
 
         {photos.length > 0 && (
-          <DetailSection title="Product Photos">
-            <div className="flex flex-wrap gap-3">
+          <CompactCard title="Product photos">
+            <div className="flex flex-wrap gap-1.5">
               {photos.map((photo, i) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   key={i}
                   src={photo}
                   alt={`Product ${i + 1}`}
-                  className="h-28 w-28 rounded-md border border-slate-200 object-cover"
+                  className="h-14 w-14 rounded border border-slate-200 object-cover"
                 />
               ))}
             </div>
-          </DetailSection>
+          </CompactCard>
+        )}
+
+        {job.isWarranty && warrantyCardPhotos.length > 0 && (
+          <CompactCard title="Warranty card photos">
+            <div className="flex flex-wrap gap-1.5">
+              {warrantyCardPhotos.map((photo, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={photo}
+                  alt={`Warranty card ${i + 1}`}
+                  className="h-14 w-14 rounded border border-sky-200 object-cover"
+                />
+              ))}
+            </div>
+          </CompactCard>
         )}
 
         {isLocked && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-            This job is delivered and locked. Only admin can reopen it.
+          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Delivered and locked — admin can reopen.
+          </p>
+        )}
+
+        {(canAdminEditAmount && !showAmountEdit) ||
+        (isAdmin && job.readyAt && !showCompletedByEdit) ? (
+          <div className="flex flex-wrap gap-1.5">
+            {canAdminEditAmount && !showAmountEdit && (
+              <button
+                type="button"
+                onClick={() => setShowAmountEdit(true)}
+                className="flex-1 rounded-md border border-slate-300 bg-white py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Edit Amount
+              </button>
+            )}
+            {isAdmin && job.readyAt && !showCompletedByEdit && (
+              <button
+                type="button"
+                onClick={() => setShowCompletedByEdit(true)}
+                className="flex-1 rounded-md border border-slate-300 bg-white py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Edit Completed By
+              </button>
+            )}
           </div>
-        )}
-
-        {canAdminEditAmount && !showAmountEdit && (
-          <button
-            type="button"
-            onClick={() => setShowAmountEdit(true)}
-            className="w-full rounded-md border border-slate-300 bg-white py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Edit Service Amount (Admin)
-          </button>
-        )}
-
-        {isAdmin && job.readyAt && !showCompletedByEdit && (
-          <button
-            type="button"
-            onClick={() => setShowCompletedByEdit(true)}
-            className="w-full rounded-md border border-slate-300 bg-white py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Edit Completed By (Admin)
-          </button>
-        )}
+        ) : null}
 
         {showCompletedByEdit && isAdmin && (
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-            <h3 className="font-semibold text-slate-900">Edit Completed By</h3>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm space-y-2">
+            <h3 className="text-sm font-semibold text-slate-900">Edit Completed By</h3>
             <select
               value={editCompletedById}
               onChange={(e) => setEditCompletedById(e.target.value)}
@@ -1039,8 +1054,8 @@ export default function JobDetailPage() {
         )}
 
         {showAmountEdit && isAdmin && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm space-y-3">
-            <h3 className="font-semibold text-amber-900">Edit Service Amount</h3>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 shadow-sm space-y-2">
+            <h3 className="text-sm font-semibold text-amber-900">Edit Service Amount</h3>
             <input
               type="number"
               min="0"
@@ -1068,62 +1083,70 @@ export default function JobDetailPage() {
         )}
 
         {isStaff && (
-          <DetailSection title="Notification Settings">
-            <JobNotificationSettings
-              jobId={job.id}
-              customerId={job.customer.id}
-              customerMobile={job.customer.mobile}
-              customerAllows={job.customer.allowWhatsappNotifications ?? true}
-              jobOverride={job.whatsappNotificationsOverride}
-              onCustomerPreferenceChange={(allows) =>
-                setJob((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        customer: {
-                          ...prev.customer,
-                          allowWhatsappNotifications: allows,
-                        },
-                      }
-                    : prev
-                )
-              }
-              onJobOverrideChange={(override) =>
-                setJob((prev) =>
-                  prev ? { ...prev, whatsappNotificationsOverride: override } : prev
-                )
-              }
-            />
-          </DetailSection>
+          <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Notifications
+            </summary>
+            <div className="border-t border-slate-100 px-3 pb-3 pt-2">
+              <JobNotificationSettings
+                jobId={job.id}
+                customerId={job.customer.id}
+                customerMobile={job.customer.mobile}
+                customerAllows={job.customer.allowWhatsappNotifications ?? true}
+                jobOverride={job.whatsappNotificationsOverride}
+                onCustomerPreferenceChange={(allows) =>
+                  setJob((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          customer: {
+                            ...prev.customer,
+                            allowWhatsappNotifications: allows,
+                          },
+                        }
+                      : prev
+                  )
+                }
+                onJobOverrideChange={(override) =>
+                  setJob((prev) =>
+                    prev ? { ...prev, whatsappNotificationsOverride: override } : prev
+                  )
+                }
+              />
+            </div>
+          </details>
         )}
 
         {job.statusHistory.length > 0 && (
-          <DetailSection title="Status History">
-            <div className="space-y-4">
+          <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Status history ({job.statusHistory.length})
+            </summary>
+            <div className="space-y-2 border-t border-slate-100 px-3 pb-3 pt-2">
               {job.statusHistory.map((entry) => (
-                <div key={entry.id} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
-                  <div className="flex items-start justify-between gap-2">
+                <div
+                  key={entry.id}
+                  className="border-b border-slate-100 pb-2 last:border-0 last:pb-0"
+                >
+                  <div className="flex items-center justify-between gap-2">
                     <JobStatusBadge status={entry.status} />
-                    <p className="text-xs text-slate-500">
+                    <p className="shrink-0 text-[10px] text-slate-500">
                       {new Date(entry.changedAt).toLocaleString("en-IN", {
                         day: "2-digit",
                         month: "short",
-                        year: "numeric",
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </p>
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Updated by: {formatStatusChangedBy(entry.changedBy)}
+                  <p className="mt-0.5 truncate text-xs text-slate-600">
+                    {formatStatusChangedBy(entry.changedBy)}
+                    {entry.note ? ` · ${entry.note}` : ""}
                   </p>
-                  {entry.note && (
-                    <p className="mt-0.5 text-sm text-slate-500">{entry.note}</p>
-                  )}
                 </div>
               ))}
             </div>
-          </DetailSection>
+          </details>
         )}
       </div>
     </AppShell>

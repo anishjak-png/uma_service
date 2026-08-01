@@ -11,19 +11,35 @@ export async function GET() {
 
   const assigned = { assignedTechnicianId: session.technicianId };
 
-  const [pendingJobs, readyJobs, waitingApprovalJobs, returnJobs] = await Promise.all([
+  const [
+    receivedTotal,
+    pendingJobs,
+    waitingApprovalJobs,
+    readyJobs,
+    returnJobs,
+    deliveredJobs,
+  ] = await Promise.all([
+    prisma.jobCard.count({ where: assigned }),
     prisma.jobCard.count({ where: { ...assigned, status: "Pending" } }),
-    prisma.jobCard.count({ where: { ...assigned, status: "Ready" } }),
     prisma.jobCard.count({
       where: { ...assigned, status: "WaitingForCustomerApproval" },
     }),
+    prisma.jobCard.count({ where: { ...assigned, status: "Ready" } }),
     prisma.jobCard.count({ where: { ...assigned, status: "Return" } }),
+    prisma.jobCard.count({ where: { ...assigned, status: "Delivered" } }),
   ]);
 
+  const pending = pendingJobs + waitingApprovalJobs;
+  const attended = readyJobs + returnJobs;
+
   return NextResponse.json({
+    receivedTotal,
+    pending,
     pendingJobs,
-    readyJobs,
     waitingApprovalJobs,
+    attended,
+    readyJobs,
     returnJobs,
+    delivered: deliveredJobs,
   });
 }

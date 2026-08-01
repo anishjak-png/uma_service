@@ -9,6 +9,26 @@ export async function countPendingDevices(): Promise<number> {
   return prisma.staffDevice.count({ where: { status: "pending" } });
 }
 
+/** Non-admin users may only have one approved device at a time. */
+export async function revokeOtherApprovedDevices(
+  staffUserId: string,
+  exceptDeviceId: string
+): Promise<number> {
+  const result = await prisma.staffDevice.updateMany({
+    where: {
+      staffUserId,
+      deviceId: { not: exceptDeviceId },
+      status: "approved",
+    },
+    data: {
+      status: "revoked",
+      approvedAt: null,
+      approvedById: null,
+    },
+  });
+  return result.count;
+}
+
 export async function getStaffDevice(
   staffUserId: string,
   deviceId: string

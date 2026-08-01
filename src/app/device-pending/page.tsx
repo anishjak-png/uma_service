@@ -22,7 +22,7 @@ export default function DevicePendingPage() {
       return;
     }
     if (deviceApproved) {
-      router.replace(role === "technician" ? "/jobs/pending" : "/dashboard");
+      router.replace(role === "technician" ? "/jobs/pending?scope=my" : "/dashboard");
     }
   }, [loaded, isLoggedIn, deviceApproved, role, router]);
 

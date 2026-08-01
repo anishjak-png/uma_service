@@ -4,6 +4,7 @@ import { enqueueReceiptPrint } from "@/lib/print-queue";
 import { dispatchNotificationEventAsync } from "@/lib/notifications/events";
 import {
   uploadProductPhotoBuffers,
+  uploadWarrantyCardPhotoBuffers,
   type PhotoBufferPayload,
 } from "@/lib/supabase-storage";
 
@@ -14,11 +15,20 @@ export type PostJobCreatePayload = {
   brand: string;
   complaint: string;
   photos: PhotoBufferPayload[];
+  warrantyCardPhotos?: PhotoBufferPayload[];
 };
 
 /** Non-critical work deferred until after the job-create response is sent. */
 export async function runPostJobCreateTasks(payload: PostJobCreatePayload) {
-  const { jobId, jobNumber, applianceType, brand, complaint, photos } = payload;
+  const {
+    jobId,
+    jobNumber,
+    applianceType,
+    brand,
+    complaint,
+    photos,
+    warrantyCardPhotos = [],
+  } = payload;
 
   const lookupTasks = [
     ensureApplianceLookupOption("brand", brand, applianceType),
@@ -43,6 +53,21 @@ export async function runPostJobCreateTasks(payload: PostJobCreatePayload) {
           )
           .catch((err) => {
             console.error(`[job-create] Photo upload failed for ${jobNumber}:`, err);
+          })
+      : Promise.resolve(),
+    warrantyCardPhotos.length > 0
+      ? uploadWarrantyCardPhotoBuffers(warrantyCardPhotos, jobNumber)
+          .then((urls) =>
+            prisma.jobCard.update({
+              where: { id: jobId },
+              data: { warrantyCardPhotos: JSON.stringify(urls) },
+            })
+          )
+          .catch((err) => {
+            console.error(
+              `[job-create] Warranty card photo upload failed for ${jobNumber}:`,
+              err
+            );
           })
       : Promise.resolve(),
   ]);

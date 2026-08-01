@@ -1,5 +1,6 @@
-import { APP_URL } from "@/lib/constants";
+import { getAppUrl } from "@/lib/constants";
 import { formatCurrency } from "@/lib/currency";
+import { toTrackingPathSlug } from "@/lib/jobs";
 import type {
   NotificationJobContext,
   NotificationJobProduct,
@@ -16,7 +17,8 @@ export function buildTrackingLink(
   settings: NotificationSettingsDto
 ): string {
   if (!settings.trackingLinkEnabled) return "";
-  return `${APP_URL}/j/${encodeURIComponent(jobNumber)}`;
+  const baseUrl = getAppUrl();
+  return `${baseUrl}/j/${toTrackingPathSlug(jobNumber)}`;
 }
 
 export function buildTemplateVariables(

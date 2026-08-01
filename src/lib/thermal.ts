@@ -1,8 +1,9 @@
-import { APP_URL, SHOP_NAME, SHOP_PHONE } from "./constants";
+import { getAppUrl } from "./constants";
 import {
   formatAccessoryLabel,
   formatMobileDisplay,
   parseAccessories,
+  toTrackingPathSlug,
 } from "./jobs";
 
 export interface ReceiptData {
@@ -45,7 +46,7 @@ export function buildReceiptData(job: {
     model: job.model,
     complaint: job.complaint,
     accessories: parseAccessories(job.accessories).map(formatAccessoryLabel),
-    statusUrl: `${APP_URL}/j/${encodeURIComponent(job.jobNumber)}`,
+    statusUrl: `${getAppUrl()}/j/${toTrackingPathSlug(job.jobNumber)}`,
   };
 }
 

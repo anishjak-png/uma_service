@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { ACTIVE_STATUSES } from "@/lib/constants";
+import { ACTIVE_JOB_STATUSES, WARRANTY_JOB_STATUSES, warrantyFieldsSupported } from "@/lib/prisma-statuses";
 import {
   detectSearchQueryType,
   normalizeJobNumberQuery,
   normalizeMobile,
 } from "@/lib/jobs";
-import { jobListSelect } from "@/lib/job-selects";
+import { getJobListSelect } from "@/lib/job-selects";
 import { daysAgo, getPeriodRange, type ReportPeriod } from "@/lib/reports";
 import { getSession } from "@/lib/session";
 
@@ -75,10 +75,26 @@ async function browseJobsResponse(params: {
   if (status && status !== "all") {
     where.status = status as JobStatus;
   } else if (warrantyOnly) {
-    where.status = { in: ["WarrantyPending", "WarrantyWithCompany"] };
+    if (!warrantyFieldsSupported() || WARRANTY_JOB_STATUSES.length === 0) {
+      return NextResponse.json({
+        mode: "jobs",
+        searchType: "browse",
+        customer: null,
+        jobs: [],
+      });
+    }
+    where.status = { in: WARRANTY_JOB_STATUSES };
     where.isWarranty = true;
   } else if (activeOnly) {
-    where.status = { in: [...ACTIVE_STATUSES] };
+    if (ACTIVE_JOB_STATUSES.length === 0) {
+      return NextResponse.json({
+        mode: "jobs",
+        searchType: "browse",
+        customer: null,
+        jobs: [],
+      });
+    }
+    where.status = { in: ACTIVE_JOB_STATUSES };
   }
 
   if (technicianId) {
@@ -95,7 +111,9 @@ async function browseJobsResponse(params: {
 
   if (warrantyBrand) {
     where.brand = warrantyBrand;
-    where.isWarranty = true;
+    if (warrantyFieldsSupported()) {
+      where.isWarranty = true;
+    }
   }
 
   if (applianceType) {
@@ -132,7 +150,7 @@ async function browseJobsResponse(params: {
 
   const jobs = await prisma.jobCard.findMany({
     where,
-    select: jobListSelect,
+    select: getJobListSelect(),
     orderBy: { receivedAt: "desc" },
     take: 100,
   });
@@ -146,6 +164,17 @@ async function browseJobsResponse(params: {
 }
 
 export async function GET(request: NextRequest) {
+  try {
+    return await searchJobs(request);
+  } catch (error) {
+    console.error("[GET /api/jobs/search]", error);
+    const message =
+      error instanceof Error ? error.message : "Search failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function searchJobs(request: NextRequest) {
   const session = await getSession();
   const { searchParams } = request.nextUrl;
   const q = searchParams.get("q")?.trim() ?? "";
@@ -206,14 +235,17 @@ export async function GET(request: NextRequest) {
     status && status !== "all" ? { status: status as JobStatus } : {};
   const outsourceWhere = outsourcedToId ? { outsourcedToId } : {};
   const warrantyWhere = warrantyBrand
-    ? { brand: warrantyBrand, isWarranty: true }
+    ? {
+        brand: warrantyBrand,
+        ...(warrantyFieldsSupported() ? { isWarranty: true } : {}),
+      }
     : warrantyOnly
-      ? {
-          isWarranty: true,
-          status: {
-            in: ["WarrantyPending", "WarrantyWithCompany"] as JobStatus[],
-          },
-        }
+      ? warrantyFieldsSupported() && WARRANTY_JOB_STATUSES.length > 0
+        ? {
+            isWarranty: true,
+            status: { in: WARRANTY_JOB_STATUSES },
+          }
+        : { id: { in: [] } }
       : {};
 
   async function jobsForCustomer(id: string) {
@@ -225,7 +257,7 @@ export async function GET(request: NextRequest) {
         ...outsourceWhere,
         ...warrantyWhere,
       },
-      select: jobListSelect,
+      select: getJobListSelect(),
       orderBy: { receivedAt: "desc" },
     });
   }
@@ -311,7 +343,7 @@ export async function GET(request: NextRequest) {
         ...outsourceWhere,
         ...warrantyWhere,
       },
-      select: jobListSelect,
+      select: getJobListSelect(),
     });
     return NextResponse.json({
       mode: "jobs",
