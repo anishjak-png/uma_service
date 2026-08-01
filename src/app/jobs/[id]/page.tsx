@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/AppShell";
+import { AccessoryQtyInput } from "@/components/AccessoryQtyInput";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
 import { ReceiptActions } from "@/components/ReceiptActions";
@@ -783,14 +784,9 @@ export default function JobDetailPage() {
                                 <span className="truncate">{item}</span>
                               </label>
                               {checked && (
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={999}
+                                <AccessoryQtyInput
                                   value={accessoryQty[item]}
-                                  onChange={(e) =>
-                                    setQty(item, Number(e.target.value))
-                                  }
+                                  onChange={(qty) => setQty(item, qty)}
                                   className="h-7 w-12 shrink-0 rounded border border-slate-300 px-1 text-center text-xs"
                                   aria-label={`${item} quantity`}
                                 />
@@ -813,22 +809,9 @@ export default function JobDetailPage() {
                         className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 px-2 text-xs"
                       />
                       {otherAccessory.trim() && (
-                        <input
-                          type="number"
-                          min={1}
-                          max={999}
+                        <AccessoryQtyInput
                           value={otherAccessoryQty}
-                          onChange={(e) =>
-                            setOtherAccessoryQty(
-                              Math.max(
-                                1,
-                                Math.min(
-                                  999,
-                                  Math.floor(Number(e.target.value)) || 1
-                                )
-                              )
-                            )
-                          }
+                          onChange={setOtherAccessoryQty}
                           className="h-8 w-12 shrink-0 rounded-md border border-slate-300 px-1 text-center text-xs"
                           aria-label="Other accessory quantity"
                         />

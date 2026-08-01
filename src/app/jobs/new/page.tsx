@@ -2,6 +2,7 @@
 
 import { AppShell } from "@/components/AppShell";
 import { CreatableSelect } from "@/components/CreatableSelect";
+import { AccessoryQtyInput } from "@/components/AccessoryQtyInput";
 import { ReceiptActions } from "@/components/ReceiptActions";
 import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
 import { formatMobileDisplay } from "@/lib/jobs";
@@ -740,12 +741,9 @@ export default function NewJobPage() {
                           <span className="truncate">{item}</span>
                         </label>
                         {checked && (
-                          <input
-                            type="number"
-                            min={1}
-                            max={999}
+                          <AccessoryQtyInput
                             value={accessoryQty[item]}
-                            onChange={(e) => setQty(item, Number(e.target.value))}
+                            onChange={(qty) => setQty(item, qty)}
                             className="h-8 w-16 shrink-0 rounded-md border border-slate-300 px-2 text-center text-sm"
                             aria-label={`${item} quantity`}
                           />
@@ -763,16 +761,9 @@ export default function NewJobPage() {
                     className="flex h-10 min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   />
                   {otherAccessory.trim() && (
-                    <input
-                      type="number"
-                      min={1}
-                      max={999}
+                    <AccessoryQtyInput
                       value={otherAccessoryQty}
-                      onChange={(e) =>
-                        setOtherAccessoryQty(
-                          Math.max(1, Math.min(999, Math.floor(Number(e.target.value)) || 1))
-                        )
-                      }
+                      onChange={setOtherAccessoryQty}
                       className="h-10 w-16 shrink-0 rounded-md border border-slate-300 px-2 text-center text-sm"
                       aria-label="Other accessory quantity"
                     />
