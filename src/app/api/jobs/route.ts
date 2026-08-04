@@ -26,6 +26,8 @@ import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
 import { getJobListSelect } from "@/lib/job-selects";
 import {
   isSupabaseStorageConfigured,
+  uploadProductPhotoBuffers,
+  uploadWarrantyCardPhotoBuffers,
   type PhotoBufferPayload,
 } from "@/lib/supabase-storage";
 
@@ -193,6 +195,7 @@ async function createJob(request: NextRequest) {
   let accessoriesList: ReturnType<typeof parseAccessories> = [];
   let isWarranty = false;
   let warrantyPurchaseDateRaw: unknown;
+  let allowWhatsappNotifications = true;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -207,6 +210,8 @@ async function createJob(request: NextRequest) {
       String(form.get("isWarranty") ?? "").toLowerCase() === "true" ||
       String(form.get("isWarranty") ?? "") === "1";
     warrantyPurchaseDateRaw = form.get("warrantyPurchaseDate");
+    const whatsappRaw = String(form.get("allowWhatsappNotifications") ?? "true").toLowerCase();
+    allowWhatsappNotifications = whatsappRaw === "true" || whatsappRaw === "1";
     const accessoriesRaw = form.get("accessories");
     if (typeof accessoriesRaw === "string" && accessoriesRaw.trim()) {
       accessoriesList = parseAccessories(accessoriesRaw);
@@ -232,6 +237,10 @@ async function createJob(request: NextRequest) {
     physicalCondition = body.physicalCondition ?? "";
     isWarranty = Boolean(body.isWarranty);
     warrantyPurchaseDateRaw = body.warrantyPurchaseDate;
+    allowWhatsappNotifications =
+      body.allowWhatsappNotifications === undefined
+        ? true
+        : Boolean(body.allowWhatsappNotifications);
     if (body.accessories !== undefined) {
       accessoriesList = parseAccessories(
         typeof body.accessories === "string"
@@ -335,10 +344,14 @@ async function createJob(request: NextRequest) {
   const [customer, jobNumber, defaultTech] = await Promise.all([
     prisma.customer.upsert({
       where: { mobile: normalizedMobile },
-      update: { name: customerName.trim() },
+      update: {
+        name: customerName.trim(),
+        allowWhatsappNotifications,
+      },
       create: {
         mobile: normalizedMobile,
         name: customerName.trim(),
+        allowWhatsappNotifications,
       },
     }),
     generateJobNumber(),
@@ -356,6 +369,33 @@ async function createJob(request: NextRequest) {
       ? `Job card created by ${creatorName} — assigned to ${assignedTechName}`
       : `Job card created by ${creatorName}`;
 
+  let productPhotosJson: string | null = null;
+  let warrantyCardPhotosJson: string | null = null;
+
+  if (photoFiles.length > 0 || warrantyCardPhotoFiles.length > 0) {
+    try {
+      if (photoFiles.length > 0) {
+        const urls = await uploadProductPhotoBuffers(
+          await readPhotoBuffers(photoFiles),
+          jobNumber
+        );
+        productPhotosJson = JSON.stringify(urls);
+      }
+      if (warrantyCardPhotoFiles.length > 0) {
+        const urls = await uploadWarrantyCardPhotoBuffers(
+          await readPhotoBuffers(warrantyCardPhotoFiles),
+          jobNumber
+        );
+        warrantyCardPhotosJson = JSON.stringify(urls);
+      }
+    } catch (error) {
+      console.error("[job-create] Photo upload failed", error);
+      const message =
+        error instanceof Error ? error.message : "Photo upload failed";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
   const job = await prisma.jobCard.create({
     data: {
       jobNumber,
@@ -366,11 +406,13 @@ async function createJob(request: NextRequest) {
       complaint,
       physicalCondition: physicalCondition?.trim() || null,
       accessories: serializeAccessories(accessoriesList),
-      productPhotos: null,
+      productPhotos: productPhotosJson,
+      warrantyCardPhotos: warrantyCardPhotosJson,
       status: initialStatus,
       assignedTechnicianId,
       isWarranty,
       warrantyPurchaseDate: isWarranty ? warrantyPurchaseDate : null,
+      whatsappNotificationsOverride: allowWhatsappNotifications ? null : false,
       createdBy: creatorName,
       statusHistory: {
         create: {
@@ -391,20 +433,14 @@ async function createJob(request: NextRequest) {
       jobId: job.id,
       jobNumber,
     });
-    const photoBuffers =
-      photoFiles.length > 0 ? await readPhotoBuffers(photoFiles) : [];
-    const warrantyCardBuffers =
-      warrantyCardPhotoFiles.length > 0
-        ? await readPhotoBuffers(warrantyCardPhotoFiles)
-        : [];
     await runPostJobCreateTasks({
       jobId: job.id,
       jobNumber,
       applianceType,
       brand,
       complaint,
-      photos: photoBuffers,
-      warrantyCardPhotos: warrantyCardBuffers,
+      photos: [],
+      warrantyCardPhotos: [],
     });
   });
 

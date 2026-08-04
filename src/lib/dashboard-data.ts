@@ -29,10 +29,34 @@ function countsFromGroups(groups: Array<{ status: string; _count: { id: number }
   };
 }
 
+const readyPickupSelect = {
+  id: true,
+  jobNumber: true,
+  brand: true,
+  applianceType: true,
+  readyAt: true,
+  serviceAmount: true,
+  customer: { select: { name: true, mobile: true } },
+  completedByTechnician: { select: { name: true } },
+  completedByOutsource: { select: { name: true } },
+} as const;
+
+function jobNumberSortKey(jobNumber: string): number {
+  const n = Number.parseInt(jobNumber.replace(/\D/g, ""), 10);
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
+
+/** Oldest UT number first (numeric), then cap the home list. */
+function readyForPickupList<T extends { jobNumber: string }>(jobs: T[], limit = 20): T[] {
+  return [...jobs]
+    .sort((a, b) => jobNumberSortKey(a.jobNumber) - jobNumberSortKey(b.jobNumber))
+    .slice(0, limit);
+}
+
 export async function getReceptionDashboardData() {
   const { today, tomorrow } = todayRange();
 
-  const [todayJobs, statusGroups, readyForPickup] = await Promise.all([
+  const [todayJobs, statusGroups, readyRows] = await Promise.all([
     prisma.jobCard.count({
       where: { receivedAt: { gte: today, lt: tomorrow } },
     }),
@@ -42,17 +66,7 @@ export async function getReceptionDashboardData() {
     }),
     prisma.jobCard.findMany({
       where: { status: "Ready" },
-      select: {
-        id: true,
-        jobNumber: true,
-        brand: true,
-        applianceType: true,
-        readyAt: true,
-        serviceAmount: true,
-        customer: { select: { name: true, mobile: true } },
-      },
-      orderBy: { readyAt: "desc" },
-      take: 20,
+      select: readyPickupSelect,
     }),
   ]);
 
@@ -61,7 +75,7 @@ export async function getReceptionDashboardData() {
   return {
     todayJobs,
     ...counts,
-    readyForPickup,
+    readyForPickup: readyForPickupList(readyRows),
   };
 }
 
@@ -69,7 +83,7 @@ export async function getAdminDashboardData() {
   const { today, tomorrow } = todayRange();
   const { monthStart, nextMonth } = monthRange();
 
-  const [todayJobs, statusGroups, todayCollection, monthlyCollection, readyCollection, readyForPickup] =
+  const [todayJobs, statusGroups, todayCollection, monthlyCollection, readyCollection, readyRows] =
     await Promise.all([
       prisma.jobCard.count({
         where: { receivedAt: { gte: today, lt: tomorrow } },
@@ -95,17 +109,7 @@ export async function getAdminDashboardData() {
       }),
       prisma.jobCard.findMany({
         where: { status: "Ready" },
-        select: {
-          id: true,
-          jobNumber: true,
-          brand: true,
-          applianceType: true,
-          readyAt: true,
-          serviceAmount: true,
-          customer: { select: { name: true, mobile: true } },
-        },
-        orderBy: { readyAt: "desc" },
-        take: 20,
+        select: readyPickupSelect,
       }),
     ]);
 
@@ -117,6 +121,6 @@ export async function getAdminDashboardData() {
     todayCollection: todayCollection._sum.serviceAmount ?? 0,
     monthlyCollection: monthlyCollection._sum.serviceAmount ?? 0,
     pendingCollection: readyCollection._sum.serviceAmount ?? 0,
-    readyForPickup,
+    readyForPickup: readyForPickupList(readyRows),
   };
 }

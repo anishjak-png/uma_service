@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     name: customer.name,
     address: customer.address,
     mobile: customer.mobile,
+    allowWhatsappNotifications: customer.allowWhatsappNotifications,
     recentJobs: customer.jobCards,
   });
 }

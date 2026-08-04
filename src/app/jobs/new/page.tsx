@@ -43,6 +43,7 @@ export default function NewJobPage() {
   });
   const [mobile, setMobile] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [allowWhatsapp, setAllowWhatsapp] = useState(true);
   const [applianceType, setApplianceType] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
@@ -127,8 +128,13 @@ export default function NewJobPage() {
 
     const res = await fetch(`/api/customers/lookup?mobile=${digits}`);
     const data = await res.json();
-    if (data.found && data.name) {
-      setCustomerName(data.name);
+    if (data.found) {
+      if (data.name) setCustomerName(data.name);
+      if (typeof data.allowWhatsappNotifications === "boolean") {
+        setAllowWhatsapp(data.allowWhatsappNotifications);
+      }
+    } else {
+      setAllowWhatsapp(true);
     }
   }, []);
 
@@ -279,6 +285,7 @@ export default function NewJobPage() {
     setCreatedJob(null);
     setMobile("");
     setCustomerName("");
+    setAllowWhatsapp(true);
     setApplianceType("");
     setBrand("");
     setModel("");
@@ -372,6 +379,7 @@ export default function NewJobPage() {
     const formData = new FormData();
     formData.set("mobile", mobile);
     formData.set("customerName", customerName);
+    formData.set("allowWhatsappNotifications", allowWhatsapp ? "true" : "false");
     formData.set("applianceType", applianceType);
     formData.set("brand", brand);
     formData.set("model", model);
@@ -614,6 +622,23 @@ export default function NewJobPage() {
                 className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
+
+            <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={allowWhatsapp}
+                onChange={(e) => setAllowWhatsapp(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-slate-800">
+                  WhatsApp notifications
+                </span>
+                <span className="block text-xs text-slate-500">
+                  Uncheck if customer has no WhatsApp
+                </span>
+              </span>
+            </label>
           </CardContent>
         </Card>
 

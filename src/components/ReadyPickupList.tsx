@@ -11,6 +11,8 @@ type ReadyJob = {
   readyAt?: string | Date | null;
   serviceAmount?: number | null;
   customer: { name?: string | null; mobile: string };
+  completedByTechnician?: { name: string } | null;
+  completedByOutsource?: { name: string } | null;
 };
 
 export function ReadyPickupList({ jobs }: { jobs: ReadyJob[] }) {
@@ -22,6 +24,11 @@ export function ReadyPickupList({ jobs }: { jobs: ReadyJob[] }) {
     <div className="space-y-2">
       {jobs.map((job) => {
         const appliance = [job.brand, job.applianceType].filter(Boolean).join(" ");
+        const repairedBy =
+          job.completedByTechnician?.name ??
+          (job.completedByOutsource
+            ? `Outsource · ${job.completedByOutsource.name}`
+            : null);
         const readyLabel = job.readyAt ? formatDateTime(job.readyAt) : null;
         return (
           <div
@@ -56,7 +63,7 @@ export function ReadyPickupList({ jobs }: { jobs: ReadyJob[] }) {
             </div>
             <Link href={`/jobs/${job.id}`} className="block">
               <p className="mt-0.5 truncate text-xs text-slate-600">
-                {[appliance, readyLabel].filter(Boolean).join(" · ")}
+                {[appliance, repairedBy, readyLabel].filter(Boolean).join(" · ")}
               </p>
             </Link>
           </div>

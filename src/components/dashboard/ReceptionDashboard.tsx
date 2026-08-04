@@ -18,6 +18,8 @@ type ReceptionDashboardProps = {
       readyAt?: string | Date | null;
       serviceAmount?: number | null;
       customer: { name?: string | null; mobile: string };
+      completedByTechnician?: { name: string } | null;
+      completedByOutsource?: { name: string } | null;
     }>;
   };
 };
@@ -44,7 +46,11 @@ export function ReceptionDashboard({ data }: ReceptionDashboardProps) {
           Job Stats
         </p>
         <div className="grid grid-cols-2 gap-2">
-          <StatCard label="Today" value={data.todayJobs} />
+          <StatCard
+            label="Today"
+            value={data.todayJobs}
+            href="/jobs/search?receivedPeriod=today"
+          />
           <StatCard
             label="Pending"
             value={data.pendingJobs}

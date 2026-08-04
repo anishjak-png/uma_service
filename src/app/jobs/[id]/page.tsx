@@ -10,6 +10,8 @@ import { JobNotificationSettings } from "@/components/JobNotificationSettings";
 import {
   getSelectableStatuses,
   isDeliveredTerminal,
+  MAX_PRODUCT_PHOTOS,
+  MAX_WARRANTY_CARD_PHOTOS,
   STATUS_LABELS,
   type JobStatusValue,
   type StaffRole,
@@ -27,10 +29,15 @@ import {
   toDateInputValue,
   type AccessoryItem,
 } from "@/lib/jobs";
+import {
+  isNativeApp,
+  isPhotoPickerCancelled,
+  pickNativePhoto,
+} from "@/lib/native-photo";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 type JobDetail = {
   id: string;
@@ -224,6 +231,12 @@ export default function JobDetailPage() {
   const [otherAccessory, setOtherAccessory] = useState("");
   const [otherAccessoryQty, setOtherAccessoryQty] = useState(1);
   const [editingAccessories, setEditingAccessories] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const [warrantyPhotoUploading, setWarrantyPhotoUploading] = useState(false);
+  const [warrantyPhotoError, setWarrantyPhotoError] = useState("");
+  const productPhotoInputRef = useRef<HTMLInputElement>(null);
+  const warrantyPhotoInputRef = useRef<HTMLInputElement>(null);
 
   function accessoriesToQtyMap(items: AccessoryItem[]) {
     const map: Record<string, number> = {};
@@ -466,6 +479,121 @@ export default function JobDetailPage() {
       completedByTechnicianId: editCompletedById || null,
     });
     setShowCompletedByEdit(false);
+  }
+
+  async function uploadProductPhotoFiles(files: File[]) {
+    if (!job || files.length === 0) return;
+    const existing = parseProductPhotos(job.productPhotos);
+    const remaining = MAX_PRODUCT_PHOTOS - existing.length;
+    if (remaining <= 0) return;
+
+    setPhotoUploading(true);
+    setPhotoError("");
+    const formData = new FormData();
+    files.slice(0, remaining).forEach((file) => formData.append("photos", file));
+
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/product-photos`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPhotoError(data.error ?? "Failed to upload photos");
+        return;
+      }
+      if (Array.isArray(data.productPhotos)) {
+        setJob((prev) =>
+          prev
+            ? { ...prev, productPhotos: JSON.stringify(data.productPhotos) }
+            : prev
+        );
+      }
+    } catch {
+      setPhotoError("Failed to upload photos");
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  async function addProductPhoto() {
+    if (!job || photoUploading) return;
+    const existing = parseProductPhotos(job.productPhotos);
+    if (existing.length >= MAX_PRODUCT_PHOTOS) return;
+
+    if (isNativeApp()) {
+      try {
+        const file = await pickNativePhoto();
+        if (file) await uploadProductPhotoFiles([file]);
+      } catch (err) {
+        if (!isPhotoPickerCancelled(err)) {
+          setPhotoError(
+            err instanceof Error ? err.message : "Could not open camera"
+          );
+        }
+      }
+      return;
+    }
+    productPhotoInputRef.current?.click();
+  }
+
+  async function uploadWarrantyCardPhotoFiles(files: File[]) {
+    if (!job || files.length === 0) return;
+    const existing = parseWarrantyCardPhotos(job.warrantyCardPhotos);
+    const remaining = MAX_WARRANTY_CARD_PHOTOS - existing.length;
+    if (remaining <= 0) return;
+
+    setWarrantyPhotoUploading(true);
+    setWarrantyPhotoError("");
+    const formData = new FormData();
+    files.slice(0, remaining).forEach((file) => formData.append("photos", file));
+
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/warranty-card-photos`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setWarrantyPhotoError(data.error ?? "Failed to upload warranty photos");
+        return;
+      }
+      if (Array.isArray(data.warrantyCardPhotos)) {
+        setJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                warrantyCardPhotos: JSON.stringify(data.warrantyCardPhotos),
+              }
+            : prev
+        );
+      }
+    } catch {
+      setWarrantyPhotoError("Failed to upload warranty photos");
+    } finally {
+      setWarrantyPhotoUploading(false);
+    }
+  }
+
+  async function addWarrantyCardPhoto() {
+    if (!job || warrantyPhotoUploading || !job.isWarranty) return;
+    const existing = parseWarrantyCardPhotos(job.warrantyCardPhotos);
+    if (existing.length >= MAX_WARRANTY_CARD_PHOTOS) return;
+
+    if (isNativeApp()) {
+      try {
+        const file = await pickNativePhoto();
+        if (file) await uploadWarrantyCardPhotoFiles([file]);
+      } catch (err) {
+        if (!isPhotoPickerCancelled(err)) {
+          setWarrantyPhotoError(
+            err instanceof Error ? err.message : "Could not open camera"
+          );
+        }
+      }
+      return;
+    }
+    warrantyPhotoInputRef.current?.click();
   }
 
   if (loading || !job || !authLoaded) {
@@ -941,35 +1069,107 @@ export default function JobDetailPage() {
           )}
         </CompactCard>
 
-        {photos.length > 0 && (
-          <CompactCard title="Product photos">
+        <CompactCard title="Product photos">
+          {photos.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {photos.map((photo, i) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  key={i}
+                  key={photo}
                   src={photo}
                   alt={`Product ${i + 1}`}
                   className="h-14 w-14 rounded border border-slate-200 object-cover"
                 />
               ))}
             </div>
-          </CompactCard>
-        )}
-
-        {job.isWarranty && warrantyCardPhotos.length > 0 && (
-          <CompactCard title="Warranty card photos">
-            <div className="flex flex-wrap gap-1.5">
-              {warrantyCardPhotos.map((photo, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={i}
-                  src={photo}
-                  alt={`Warranty card ${i + 1}`}
-                  className="h-14 w-14 rounded border border-sky-200 object-cover"
-                />
-              ))}
+          ) : (
+            <p className="text-xs text-slate-500">No product photos yet</p>
+          )}
+          {isStaff && !isLocked && photos.length < MAX_PRODUCT_PHOTOS && (
+            <div className="mt-2 space-y-1.5">
+              <input
+                ref={productPhotoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                className="sr-only"
+                aria-hidden
+                onChange={async (e) => {
+                  const files = e.target.files;
+                  if (!files?.length) return;
+                  await uploadProductPhotoFiles(Array.from(files));
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={addProductPhoto}
+                disabled={photoUploading}
+                className="w-full rounded-md border border-dashed border-emerald-400 bg-emerald-50 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                {photoUploading
+                  ? "Uploading…"
+                  : `Add photo (${photos.length}/${MAX_PRODUCT_PHOTOS})`}
+              </button>
+              {photoError && (
+                <p className="text-xs text-red-600">{photoError}</p>
+              )}
             </div>
+          )}
+        </CompactCard>
+
+        {job.isWarranty && (
+          <CompactCard title="Warranty card photos">
+            {warrantyCardPhotos.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {warrantyCardPhotos.map((photo, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={photo}
+                    src={photo}
+                    alt={`Warranty card ${i + 1}`}
+                    className="h-14 w-14 rounded border border-sky-200 object-cover"
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">No warranty card photos yet</p>
+            )}
+            {isStaff &&
+              !isLocked &&
+              warrantyCardPhotos.length < MAX_WARRANTY_CARD_PHOTOS && (
+                <div className="mt-2 space-y-1.5">
+                  <input
+                    ref={warrantyPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    className="sr-only"
+                    aria-hidden
+                    onChange={async (e) => {
+                      const files = e.target.files;
+                      if (!files?.length) return;
+                      await uploadWarrantyCardPhotoFiles(Array.from(files));
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={addWarrantyCardPhoto}
+                    disabled={warrantyPhotoUploading}
+                    className="w-full rounded-md border border-dashed border-sky-400 bg-sky-50 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                  >
+                    {warrantyPhotoUploading
+                      ? "Uploading…"
+                      : `Add warranty photo (${warrantyCardPhotos.length}/${MAX_WARRANTY_CARD_PHOTOS})`}
+                  </button>
+                  {warrantyPhotoError && (
+                    <p className="text-xs text-red-600">{warrantyPhotoError}</p>
+                  )}
+                </div>
+              )}
           </CompactCard>
         )}
 
