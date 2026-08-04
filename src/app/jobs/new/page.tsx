@@ -6,6 +6,11 @@ import { AccessoryQtyInput } from "@/components/AccessoryQtyInput";
 import { ReceiptActions } from "@/components/ReceiptActions";
 import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
 import { formatMobileDisplay } from "@/lib/jobs";
+import {
+  isNativeApp,
+  isPhotoPickerCancelled,
+  pickNativePhoto,
+} from "@/lib/native-photo";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -169,13 +174,38 @@ export default function NewJobPage() {
     const newFiles = Array.from(files).slice(0, MAX_PRODUCT_PHOTOS - photoFiles.length);
     if (newFiles.length === 0) return;
 
-    setPhotoFiles((prev) => [...prev, ...newFiles].slice(0, MAX_PRODUCT_PHOTOS));
-    setPhotoPreviews((prev) => [
-      ...prev,
-      ...newFiles.map((f) => URL.createObjectURL(f)),
-    ].slice(0, MAX_PRODUCT_PHOTOS));
-
+    appendProductPhotos(newFiles);
     e.target.value = "";
+  }
+
+  function appendProductPhotos(newFiles: File[]) {
+    const limited = newFiles.slice(0, MAX_PRODUCT_PHOTOS - photoFiles.length);
+    if (limited.length === 0) return;
+    setPhotoFiles((prev) => [...prev, ...limited].slice(0, MAX_PRODUCT_PHOTOS));
+    setPhotoPreviews((prev) =>
+      [...prev, ...limited.map((f) => URL.createObjectURL(f))].slice(
+        0,
+        MAX_PRODUCT_PHOTOS
+      )
+    );
+  }
+
+  async function addProductPhoto() {
+    if (photoFiles.length >= MAX_PRODUCT_PHOTOS) return;
+    if (isNativeApp()) {
+      try {
+        const file = await pickNativePhoto({ preferCamera: true });
+        if (file) appendProductPhotos([file]);
+      } catch (err) {
+        if (!isPhotoPickerCancelled(err)) {
+          setError(
+            err instanceof Error ? err.message : "Could not open camera"
+          );
+        }
+      }
+      return;
+    }
+    photoInputRef.current?.click();
   }
 
   function removePhoto(index: number) {
@@ -194,15 +224,43 @@ export default function NewJobPage() {
     );
     if (newFiles.length === 0) return;
 
-    setWarrantyCardFiles((prev) =>
-      [...prev, ...newFiles].slice(0, MAX_WARRANTY_CARD_PHOTOS)
-    );
-    setWarrantyCardPreviews((prev) => [
-      ...prev,
-      ...newFiles.map((f) => URL.createObjectURL(f)),
-    ].slice(0, MAX_WARRANTY_CARD_PHOTOS));
-
+    appendWarrantyCardFiles(newFiles);
     e.target.value = "";
+  }
+
+  function appendWarrantyCardFiles(newFiles: File[]) {
+    const limited = newFiles.slice(
+      0,
+      MAX_WARRANTY_CARD_PHOTOS - warrantyCardFiles.length
+    );
+    if (limited.length === 0) return;
+    setWarrantyCardFiles((prev) =>
+      [...prev, ...limited].slice(0, MAX_WARRANTY_CARD_PHOTOS)
+    );
+    setWarrantyCardPreviews((prev) =>
+      [...prev, ...limited.map((f) => URL.createObjectURL(f))].slice(
+        0,
+        MAX_WARRANTY_CARD_PHOTOS
+      )
+    );
+  }
+
+  async function addWarrantyCardFormPhoto() {
+    if (warrantyCardFiles.length >= MAX_WARRANTY_CARD_PHOTOS) return;
+    if (isNativeApp()) {
+      try {
+        const file = await pickNativePhoto({ preferCamera: true });
+        if (file) appendWarrantyCardFiles([file]);
+      } catch (err) {
+        if (!isPhotoPickerCancelled(err)) {
+          setError(
+            err instanceof Error ? err.message : "Could not open camera"
+          );
+        }
+      }
+      return;
+    }
+    warrantyCardFormInputRef.current?.click();
   }
 
   function removeWarrantyCardPhoto(index: number) {
@@ -249,13 +307,18 @@ export default function NewJobPage() {
     const remaining = MAX_WARRANTY_CARD_PHOTOS - warrantyCardUrls.length;
     if (remaining <= 0) return;
 
+    await uploadWarrantyCardFiles(Array.from(files).slice(0, remaining));
+    e.target.value = "";
+  }
+
+  async function uploadWarrantyCardFiles(files: File[]) {
+    if (!createdJob || files.length === 0) return;
+
     setWarrantyCardUploading(true);
     setWarrantyCardError("");
 
     const formData = new FormData();
-    Array.from(files)
-      .slice(0, remaining)
-      .forEach((file) => formData.append("photos", file));
+    files.forEach((file) => formData.append("photos", file));
 
     try {
       const res = await fetch(
@@ -274,8 +337,31 @@ export default function NewJobPage() {
       setWarrantyCardError("Failed to upload warranty card photos");
     } finally {
       setWarrantyCardUploading(false);
-      e.target.value = "";
     }
+  }
+
+  async function addWarrantyCardSuccessPhoto() {
+    if (
+      !createdJob ||
+      warrantyCardUploading ||
+      warrantyCardUrls.length >= MAX_WARRANTY_CARD_PHOTOS
+    ) {
+      return;
+    }
+    if (isNativeApp()) {
+      try {
+        const file = await pickNativePhoto({ preferCamera: true });
+        if (file) await uploadWarrantyCardFiles([file]);
+      } catch (err) {
+        if (!isPhotoPickerCancelled(err)) {
+          setWarrantyCardError(
+            err instanceof Error ? err.message : "Could not open camera"
+          );
+        }
+      }
+      return;
+    }
+    warrantyCardSuccessInputRef.current?.click();
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -418,7 +504,7 @@ export default function NewJobPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => warrantyCardSuccessInputRef.current?.click()}
+                  onClick={addWarrantyCardSuccessPhoto}
                   disabled={
                     warrantyCardUploading ||
                     warrantyCardUrls.length >= MAX_WARRANTY_CARD_PHOTOS
@@ -596,7 +682,7 @@ export default function NewJobPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => warrantyCardFormInputRef.current?.click()}
+                    onClick={addWarrantyCardFormPhoto}
                     disabled={warrantyCardFiles.length >= MAX_WARRANTY_CARD_PHOTOS}
                     className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-sky-400 bg-sky-50 text-sm font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -791,6 +877,7 @@ export default function NewJobPage() {
                 ref={photoInputRef}
                 type="file"
                 accept="image/*"
+                capture="environment"
                 multiple
                 disabled={photoFiles.length >= MAX_PRODUCT_PHOTOS}
                 onChange={handlePhotoUpload}
@@ -799,7 +886,7 @@ export default function NewJobPage() {
               />
               <button
                 type="button"
-                onClick={() => photoInputRef.current?.click()}
+                onClick={addProductPhoto}
                 disabled={photoFiles.length >= MAX_PRODUCT_PHOTOS}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-emerald-400 bg-emerald-50 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
               >

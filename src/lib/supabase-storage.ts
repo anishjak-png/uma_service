@@ -46,7 +46,30 @@ async function uploadPhotoBuffersToFolder(
 
     if (!res.ok) {
       const detail = await res.text();
-      throw new Error(`Photo upload failed: ${detail}`);
+      let message = detail;
+      try {
+        const parsed = JSON.parse(detail) as { error?: string; message?: string };
+        message = parsed.error ?? parsed.message ?? detail;
+      } catch {
+        // keep raw text
+      }
+      const lower = message.toLowerCase();
+      if (lower.includes("bucket") && lower.includes("not found")) {
+        throw new Error(
+          `Photo upload failed: storage bucket "${bucket}" not found. Create it in Supabase Storage (public).`
+        );
+      }
+      if (lower.includes("row-level security") || lower.includes("unauthorized") || res.status === 401) {
+        throw new Error(
+          "Photo upload failed: check SUPABASE_SERVICE_ROLE_KEY on the server."
+        );
+      }
+      if (res.status === 404) {
+        throw new Error(
+          `Photo upload failed: storage path or bucket missing (${bucket}).`
+        );
+      }
+      throw new Error(`Photo upload failed: ${message}`);
     }
 
     urls.push(`${url}/storage/v1/object/public/${bucket}/${path}`);

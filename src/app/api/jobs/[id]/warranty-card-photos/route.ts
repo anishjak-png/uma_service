@@ -71,7 +71,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const toUpload = photoFiles.slice(0, remaining);
     if (!isSupabaseStorageConfigured()) {
       return NextResponse.json(
-        { error: "Photo upload is not configured. Set Supabase Storage env vars." },
+        {
+          error:
+            "Photo upload is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server, and create a public Storage bucket (product-photos).",
+        },
         { status: 503 }
       );
     }

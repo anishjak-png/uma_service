@@ -58,8 +58,20 @@ Share `app-debug.apk` with staff (WhatsApp, USB, etc.).
 
 - The APK loads the **cloud app** — phone needs **internet** (Wi‑Fi or mobile data)
 - Updates to the web app appear automatically — **no need to rebuild APK** for normal feature changes
-- Rebuild APK only if you change app name, icon, or URL
+- **Rebuild the APK** when changing native features (camera, app name, icon, or server URL)
+- Photo capture uses the native **Camera** plugin — after updating camera code, run `BUILD-APK.bat` and reinstall
 - **Print bridge** stays on the shop PC — phones use the app only
+
+## Photos / Supabase Storage
+
+Product photos upload through the cloud app to Supabase Storage. On Vercel, set:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_STORAGE_BUCKET` (default `product-photos`)
+
+In Supabase → **Storage**, create a **public** bucket named `product-photos` (or match your env var).
+Without these, Add photo fails with a storage configuration error.
 
 ## Custom URL (optional)
 

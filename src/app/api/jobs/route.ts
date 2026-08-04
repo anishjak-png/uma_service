@@ -291,7 +291,10 @@ async function createJob(request: NextRequest) {
 
   if (photoFiles.length > 0 && !isSupabaseStorageConfigured()) {
     return NextResponse.json(
-      { error: "Photo upload is not configured. Set Supabase Storage env vars." },
+      {
+        error:
+          "Photo upload is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server, and create a public Storage bucket (product-photos).",
+      },
       { status: 503 }
     );
   }
@@ -305,7 +308,10 @@ async function createJob(request: NextRequest) {
     }
     if (!isSupabaseStorageConfigured()) {
       return NextResponse.json(
-        { error: "Photo upload is not configured. Set Supabase Storage env vars." },
+        {
+          error:
+            "Photo upload is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server, and create a public Storage bucket (product-photos).",
+        },
         { status: 503 }
       );
     }

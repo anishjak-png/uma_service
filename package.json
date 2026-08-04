@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "node node_modules/prisma/build/index.js generate && next build",
     "start": "next start",
     "lint": "eslint",
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^7.4.2",
+    "@capacitor/camera": "^7.0.5",
     "@capacitor/core": "^7.4.2",
     "@capacitor/device": "^7.0.5",
     "@prisma/client": "^6.19.0",
