@@ -8,7 +8,13 @@ import {
   normalizeMobile,
 } from "@/lib/jobs";
 import { getJobListSelect } from "@/lib/job-selects";
-import { daysAgo, getPeriodRange, type ReportPeriod } from "@/lib/reports";
+import {
+  daysAgo,
+  getPeriodRange,
+  isReportPeriod,
+  wasDeliveredFromReturn,
+  type ReportPeriod,
+} from "@/lib/reports";
 import { getSession } from "@/lib/session";
 
 function technicianScopeWhere(
@@ -27,9 +33,36 @@ function technicianScopeWhere(
 }
 
 function parseReportPeriod(raw: string | null): ReportPeriod | null {
-  if (raw === "today" || raw === "month" || raw === "year") return raw;
+  if (!raw || !isReportPeriod(raw)) return null;
+  return raw;
+}
+
+type ReportPipeline = "delivered" | "undelivered" | "pending" | "returned";
+
+function parsePipeline(raw: string | null): ReportPipeline | null {
+  if (
+    raw === "delivered" ||
+    raw === "undelivered" ||
+    raw === "pending" ||
+    raw === "returned"
+  ) {
+    return raw;
+  }
   return null;
 }
+
+const PIPELINE_STATUSES: Record<ReportPipeline, JobStatus[]> = {
+  delivered: ["Delivered"],
+  returned: ["Delivered"],
+  undelivered: ["Ready", "Return"],
+  pending: [
+    "Pending",
+    "WaitingForCustomerApproval",
+    "Outsourced",
+    "WarrantyPending",
+    "WarrantyWithCompany",
+  ],
+};
 
 async function browseJobsResponse(params: {
   session: Awaited<ReturnType<typeof getSession>>;
@@ -43,6 +76,8 @@ async function browseJobsResponse(params: {
   receivedPeriod: ReportPeriod | null;
   deliveredPeriod: ReportPeriod | null;
   readyPeriod: ReportPeriod | null;
+  returnedPeriod: ReportPeriod | null;
+  pipeline: ReportPipeline | null;
   completedByTechnicianId: string | null;
   outsourcedToId: string | null;
   warrantyBrand: string | null;
@@ -60,6 +95,8 @@ async function browseJobsResponse(params: {
     receivedPeriod,
     deliveredPeriod,
     readyPeriod,
+    returnedPeriod,
+    pipeline,
     completedByTechnicianId,
     outsourcedToId,
     warrantyBrand,
@@ -72,7 +109,15 @@ async function browseJobsResponse(params: {
 
   const where: Record<string, unknown> = { ...scopeWhere };
 
-  if (status && status !== "all") {
+  if (pipeline) {
+    const statuses = PIPELINE_STATUSES[pipeline].filter((s) => {
+      if (s === "WarrantyPending" || s === "WarrantyWithCompany") {
+        return warrantyFieldsSupported();
+      }
+      return true;
+    });
+    where.status = { in: statuses };
+  } else if (status && status !== "all") {
     where.status = status as JobStatus;
   } else if (warrantyOnly) {
     if (!warrantyFieldsSupported() || WARRANTY_JOB_STATUSES.length === 0) {
@@ -124,17 +169,27 @@ async function browseJobsResponse(params: {
     where.brand = brand;
   }
 
-  if (minAgeDays) {
-    const days = Number.parseInt(minAgeDays, 10);
-    if (!Number.isNaN(days) && days > 0) {
-      where.status = "Pending";
-      where.receivedAt = { lt: daysAgo(days) };
-    }
-  }
-
   if (receivedPeriod) {
     const { start, end } = getPeriodRange(receivedPeriod);
     where.receivedAt = { gte: start, lt: end };
+  }
+
+  if (minAgeDays) {
+    const days = Number.parseInt(minAgeDays, 10);
+    if (!Number.isNaN(days) && days > 0) {
+      if (!pipeline) {
+        where.status = "Pending";
+      }
+      const ageCutoff = daysAgo(days);
+      const existing = where.receivedAt as
+        | { gte?: Date; lt?: Date }
+        | undefined;
+      if (existing?.gte) {
+        where.receivedAt = { gte: existing.gte, lt: ageCutoff };
+      } else {
+        where.receivedAt = { lt: ageCutoff };
+      }
+    }
   }
 
   if (deliveredPeriod) {
@@ -146,6 +201,51 @@ async function browseJobsResponse(params: {
   if (readyPeriod) {
     const { start, end } = getPeriodRange(readyPeriod);
     where.readyAt = { gte: start, lt: end };
+  }
+
+  const needsReturnHistoryFilter = Boolean(returnedPeriod || pipeline === "returned");
+
+  if (returnedPeriod) {
+    const { start, end } = getPeriodRange(returnedPeriod);
+    // Closed returns by delivery date: Delivered in period, prev status Return.
+    where.status = "Delivered";
+    where.deliveredAt = { gte: start, lt: end };
+  }
+
+  if (needsReturnHistoryFilter) {
+    const candidates = await prisma.jobCard.findMany({
+      where,
+      select: {
+        id: true,
+        statusHistory: {
+          orderBy: [{ changedAt: "desc" }, { id: "desc" }],
+          take: 8,
+          select: { status: true },
+        },
+      },
+      orderBy: { receivedAt: "desc" },
+      take: 200,
+    });
+    const returnIds = candidates
+      .filter((job) => wasDeliveredFromReturn(job.statusHistory))
+      .map((job) => job.id);
+
+    const jobs =
+      returnIds.length === 0
+        ? []
+        : await prisma.jobCard.findMany({
+            where: { id: { in: returnIds } },
+            select: getJobListSelect(),
+            orderBy: { receivedAt: "desc" },
+            take: 100,
+          });
+
+    return NextResponse.json({
+      mode: "jobs",
+      searchType: "browse",
+      customer: null,
+      jobs,
+    });
   }
 
   const jobs = await prisma.jobCard.findMany({
@@ -189,6 +289,8 @@ async function searchJobs(request: NextRequest) {
   const receivedPeriod = parseReportPeriod(searchParams.get("receivedPeriod"));
   const deliveredPeriod = parseReportPeriod(searchParams.get("deliveredPeriod"));
   const readyPeriod = parseReportPeriod(searchParams.get("readyPeriod"));
+  const returnedPeriod = parseReportPeriod(searchParams.get("returnedPeriod"));
+  const pipeline = parsePipeline(searchParams.get("pipeline"));
   const completedByTechnicianId = searchParams.get("completedByTechnicianId");
   const outsourcedToId = searchParams.get("outsourcedToId");
   const warrantyBrand = searchParams.get("warrantyBrand")?.trim() || null;
@@ -205,6 +307,8 @@ async function searchJobs(request: NextRequest) {
       receivedPeriod ||
       deliveredPeriod ||
       readyPeriod ||
+      returnedPeriod ||
+      pipeline ||
       completedByTechnicianId ||
       outsourcedToId ||
       warrantyBrand ||
@@ -224,6 +328,8 @@ async function searchJobs(request: NextRequest) {
       receivedPeriod,
       deliveredPeriod,
       readyPeriod,
+      returnedPeriod,
+      pipeline,
       completedByTechnicianId,
       outsourcedToId,
       warrantyBrand,

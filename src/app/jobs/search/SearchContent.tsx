@@ -103,6 +103,8 @@ export default function SearchContent() {
   const initialReceivedPeriod = searchParams.get("receivedPeriod") ?? "";
   const initialDeliveredPeriod = searchParams.get("deliveredPeriod") ?? "";
   const initialReadyPeriod = searchParams.get("readyPeriod") ?? "";
+  const initialReturnedPeriod = searchParams.get("returnedPeriod") ?? "";
+  const initialPipeline = searchParams.get("pipeline") ?? "";
   const initialCompletedBy = searchParams.get("completedByTechnicianId") ?? "";
   const initialOutsourcedToId = searchParams.get("outsourcedToId") ?? "";
   const initialWarrantyBrand = searchParams.get("warrantyBrand") ?? "";
@@ -138,6 +140,8 @@ export default function SearchContent() {
         receivedPeriod?: string;
         deliveredPeriod?: string;
         readyPeriod?: string;
+        returnedPeriod?: string;
+        pipeline?: string;
         completedByTechnicianId?: string;
         outsourcedToId?: string;
         warrantyBrand?: string;
@@ -153,7 +157,7 @@ export default function SearchContent() {
       }
       if (status === "Warranty") {
         params.set("warranty", "true");
-      } else if (status !== "all") {
+      } else if (status !== "all" && !browse.pipeline) {
         params.set("status", status);
       } else if (browse.warranty) {
         params.set("warranty", "true");
@@ -167,6 +171,8 @@ export default function SearchContent() {
       if (browse.receivedPeriod) params.set("receivedPeriod", browse.receivedPeriod);
       if (browse.deliveredPeriod) params.set("deliveredPeriod", browse.deliveredPeriod);
       if (browse.readyPeriod) params.set("readyPeriod", browse.readyPeriod);
+      if (browse.returnedPeriod) params.set("returnedPeriod", browse.returnedPeriod);
+      if (browse.pipeline) params.set("pipeline", browse.pipeline);
       if (browse.completedByTechnicianId) {
         params.set("completedByTechnicianId", browse.completedByTechnicianId);
       }
@@ -208,6 +214,8 @@ export default function SearchContent() {
     receivedPeriod: initialReceivedPeriod || undefined,
     deliveredPeriod: initialDeliveredPeriod || undefined,
     readyPeriod: initialReadyPeriod || undefined,
+    returnedPeriod: initialReturnedPeriod || undefined,
+    pipeline: initialPipeline || undefined,
     completedByTechnicianId: initialCompletedBy || undefined,
     outsourcedToId: partnerFilter || undefined,
     warrantyBrand: brandFilter || undefined,
@@ -224,6 +232,8 @@ export default function SearchContent() {
       initialReceivedPeriod ||
       initialDeliveredPeriod ||
       initialReadyPeriod ||
+      initialReturnedPeriod ||
+      initialPipeline ||
       initialCompletedBy ||
       partnerFilter ||
       brandFilter ||
@@ -276,6 +286,8 @@ export default function SearchContent() {
     initialReceivedPeriod,
     initialDeliveredPeriod,
     initialReadyPeriod,
+    initialReturnedPeriod,
+    initialPipeline,
     initialCompletedBy,
     initialOutsourcedToId,
     initialWarrantyBrand,
@@ -332,6 +344,8 @@ export default function SearchContent() {
     if (initialReceivedPeriod) params.set("receivedPeriod", initialReceivedPeriod);
     if (initialDeliveredPeriod) params.set("deliveredPeriod", initialDeliveredPeriod);
     if (initialReadyPeriod) params.set("readyPeriod", initialReadyPeriod);
+    if (initialReturnedPeriod) params.set("returnedPeriod", initialReturnedPeriod);
+    if (initialPipeline) params.set("pipeline", initialPipeline);
     if (initialCompletedBy) params.set("completedByTechnicianId", initialCompletedBy);
     if (status === "Outsourced" && outsourcedToId) {
       params.set("outsourcedToId", outsourcedToId);

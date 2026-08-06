@@ -834,7 +834,7 @@ export default function JobDetailPage() {
 
           {(isStaff || role === "technician") && (
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {job.status !== "Delivered" && (
+              {(job.status === "Ready" || job.status === "Return") && (
                 <Link
                   href={`/jobs/delivery?q=${encodeURIComponent(job.jobNumber)}`}
                   className="inline-flex h-8 flex-1 min-w-[5.5rem] items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 hover:bg-slate-50"

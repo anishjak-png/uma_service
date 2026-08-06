@@ -1,5 +1,11 @@
 import type { ReportPeriod } from "@/lib/reports";
 
+export type ReportPipeline =
+  | "delivered"
+  | "undelivered"
+  | "pending"
+  | "returned";
+
 type ReportLinkParams = {
   status?: string;
   technicianId?: string;
@@ -10,6 +16,8 @@ type ReportLinkParams = {
   receivedPeriod?: ReportPeriod;
   deliveredPeriod?: ReportPeriod;
   readyPeriod?: ReportPeriod;
+  returnedPeriod?: ReportPeriod;
+  pipeline?: ReportPipeline;
   completedByTechnicianId?: string;
 };
 
@@ -24,6 +32,8 @@ export function reportJobsHref(params: ReportLinkParams): string {
   if (params.receivedPeriod) search.set("receivedPeriod", params.receivedPeriod);
   if (params.deliveredPeriod) search.set("deliveredPeriod", params.deliveredPeriod);
   if (params.readyPeriod) search.set("readyPeriod", params.readyPeriod);
+  if (params.returnedPeriod) search.set("returnedPeriod", params.returnedPeriod);
+  if (params.pipeline) search.set("pipeline", params.pipeline);
   if (params.completedByTechnicianId) {
     search.set("completedByTechnicianId", params.completedByTechnicianId);
   }

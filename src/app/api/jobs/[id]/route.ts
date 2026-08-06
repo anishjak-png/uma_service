@@ -115,6 +115,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         );
       }
 
+      if (
+        newStatus === "Delivered" &&
+        existing.status !== "Ready" &&
+        existing.status !== "Return"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Only Ready or Return jobs can be marked as delivered",
+          },
+          { status: 400 }
+        );
+      }
+
       if (newStatus === "WarrantyWithCompany") {
         if (!existing.isWarranty && body.convertToWarranty !== true) {
           return NextResponse.json(

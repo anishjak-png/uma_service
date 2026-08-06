@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { CACHE_TTL, getCached, setCache } from "@/lib/cache";
-import { daysAgo, getPeriodRange, type ReportPeriod } from "@/lib/reports";
+import {
+  daysAgo,
+  getPeriodRange,
+  isReportPeriod,
+  wasDeliveredFromReturn,
+  type ReportPeriod,
+} from "@/lib/reports";
 
 type ReportSection = "summary" | "technicians" | "brands-appliances";
 
@@ -24,54 +30,131 @@ function billRange(jobs: { serviceAmount: number | null }[]) {
   return { lowest: Math.min(...amounts), highest: Math.max(...amounts) };
 }
 
+function countStatus(jobs: { status: string }[], status: string) {
+  return jobs.filter((j) => j.status === status).length;
+}
+
+function agingBuckets(dates: Date[]) {
+  const d3 = daysAgo(3);
+  const d7 = daysAgo(7);
+  const d15 = daysAgo(15);
+  return {
+    over3Days: dates.filter((d) => d < d3).length,
+    over7Days: dates.filter((d) => d < d7).length,
+    over15Days: dates.filter((d) => d < d15).length,
+  };
+}
+
 async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
-  const [
-    jobsReceived,
-    jobsDelivered,
-    deliveredInPeriod,
-    allJobsInPeriod,
-    readyJobs,
-    pendingJobs,
-  ] = await Promise.all([
-    prisma.jobCard.count({
-      where: { receivedAt: { gte: start, lt: end } },
-    }),
-    prisma.jobCard.count({
-      where: { status: "Delivered", deliveredAt: { gte: start, lt: end } },
-    }),
-    prisma.jobCard.findMany({
-      where: { status: "Delivered", deliveredAt: { gte: start, lt: end } },
-      select: { serviceAmount: true },
-    }),
-    prisma.jobCard.count({
-      where: { receivedAt: { gte: start, lt: end } },
-    }),
-    prisma.jobCard.findMany({
-      where: { status: "Ready" },
-      select: { serviceAmount: true },
-    }),
-    prisma.jobCard.findMany({
-      where: { status: "Pending" },
-      select: { id: true, receivedAt: true },
-    }),
-  ]);
+  const [cohortJobs, readyLiveJobs, returnLiveJobs, pendingLiveJobs, liveCounts] =
+    await Promise.all([
+      prisma.jobCard.findMany({
+        where: { receivedAt: { gte: start, lt: end } },
+        select: {
+          status: true,
+          serviceAmount: true,
+          statusHistory: {
+            orderBy: [{ changedAt: "desc" }, { id: "desc" }],
+            take: 8,
+            select: { status: true },
+          },
+        },
+      }),
+      prisma.jobCard.findMany({
+        where: { status: "Ready" },
+        select: { serviceAmount: true, readyAt: true, receivedAt: true },
+      }),
+      prisma.jobCard.findMany({
+        where: { status: "Return" },
+        select: { receivedAt: true },
+      }),
+      prisma.jobCard.findMany({
+        where: { status: "Pending" },
+        select: { receivedAt: true },
+      }),
+      prisma.jobCard.groupBy({
+        by: ["status"],
+        _count: { id: true },
+        where: {
+          status: {
+            in: [
+              "Pending",
+              "Ready",
+              "Return",
+              "Outsourced",
+              "WarrantyPending",
+              "WarrantyWithCompany",
+            ],
+          },
+        },
+      }),
+    ]);
+
+  const liveByStatus = Object.fromEntries(
+    liveCounts.map((row) => [row.status, row._count.id])
+  ) as Record<string, number>;
+
+  const jobsCreated = cohortJobs.length;
+  const deliveredJobs = cohortJobs.filter((j) => j.status === "Delivered");
+  const delivered = deliveredJobs.length;
+  const jobsReturned = deliveredJobs.filter((j) =>
+    wasDeliveredFromReturn(j.statusHistory)
+  ).length;
+  const totalCollection = sumAmount(deliveredJobs);
+
+  const undeliveredReady = countStatus(cohortJobs, "Ready");
+  const undeliveredReturn = countStatus(cohortJobs, "Return");
+  const undelivered = undeliveredReady + undeliveredReturn;
+
+  const cohortPending = countStatus(cohortJobs, "Pending");
+  const cohortWaiting = countStatus(cohortJobs, "WaitingForCustomerApproval");
+  const cohortOutsourced = countStatus(cohortJobs, "Outsourced");
+  const cohortWarranty =
+    countStatus(cohortJobs, "WarrantyPending") +
+    countStatus(cohortJobs, "WarrantyWithCompany");
+  const pendingOpen =
+    cohortPending + cohortWaiting + cohortOutsourced + cohortWarranty;
+
+  const warrantyLive =
+    (liveByStatus.WarrantyPending ?? 0) +
+    (liveByStatus.WarrantyWithCompany ?? 0);
+
+  const undeliveredAgeDates = [
+    ...readyLiveJobs.map((j) => j.readyAt ?? j.receivedAt),
+    ...returnLiveJobs.map((j) => j.receivedAt),
+  ];
 
   return {
     period,
     summary: {
-      jobsReceived,
-      jobsDelivered,
-      totalJobs: allJobsInPeriod,
-      totalCollection: sumAmount(deliveredInPeriod),
+      jobsCreated,
+      jobsReceived: jobsCreated,
+      totalJobs: jobsCreated,
+      delivered,
+      undelivered,
+      undeliveredReady,
+      undeliveredReturn,
+      pendingOpen,
+      pendingOpenPending: cohortPending,
+      pendingOpenWaiting: cohortWaiting,
+      pendingOpenOutsourced: cohortOutsourced,
+      pendingOpenWarranty: cohortWarranty,
+      totalCollection,
+      jobsReturned,
+      jobsDeliveredReady: delivered - jobsReturned,
+      jobsDeliveredReturn: jobsReturned,
+      pendingLive: liveByStatus.Pending ?? 0,
+      returnLive: liveByStatus.Return ?? 0,
+      outsourcedLive: liveByStatus.Outsourced ?? 0,
+      warrantyLive,
+      readyLive: readyLiveJobs.length,
+      readyLiveAmount: sumAmount(readyLiveJobs),
     },
-    pendingAging: {
-      over3Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(3)).length,
-      over7Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(7)).length,
-      over15Days: pendingJobs.filter((j) => j.receivedAt < daysAgo(15)).length,
-    },
+    pendingAging: agingBuckets(pendingLiveJobs.map((j) => j.receivedAt)),
+    undeliveredAging: agingBuckets(undeliveredAgeDates),
     readyNotDelivered: {
-      count: readyJobs.length,
-      totalAmount: sumAmount(readyJobs),
+      count: readyLiveJobs.length,
+      totalAmount: sumAmount(readyLiveJobs),
     },
   };
 }
@@ -132,46 +215,51 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
     deliveredByTech.set(techId, list);
   }
 
-  const technicianReports = technicians.map((tech) => {
-    const statusRows = assignedByStatus.filter(
-      (row) => row.assignedTechnicianId === tech.id
-    );
-    const countAssigned = (status: string) =>
-      statusRows.find((row) => row.status === status)?._count.id ?? 0;
+  const technicianReports = technicians
+    .map((tech) => {
+      const statusRows = assignedByStatus.filter(
+        (row) => row.assignedTechnicianId === tech.id
+      );
+      const countAssigned = (status: string) =>
+        statusRows.find((row) => row.status === status)?._count.id ?? 0;
 
-    const pending = countAssigned("Pending");
-    const waitingForApproval = countAssigned("WaitingForCustomerApproval");
-    const ready = countAssigned("Ready");
-    const returnCount = countAssigned("Return");
-    const deliveredAssigned = countAssigned("Delivered");
-    const activeAssigned = pending + waitingForApproval + ready + returnCount;
-    const received = receivedById[tech.id] ?? 0;
-    const completed = completedById[tech.id] ?? 0;
-    const deliveredJobs = deliveredByTech.get(tech.id) ?? [];
-    const delivered = deliveredJobs.length;
-    const totalCollection = sumAmount(deliveredJobs);
-    const { lowest, highest } = billRange(deliveredJobs);
+      const pending = countAssigned("Pending");
+      const waitingForApproval = countAssigned("WaitingForCustomerApproval");
+      const ready = countAssigned("Ready");
+      const returnCount = countAssigned("Return");
+      const activePipeline = pending + waitingForApproval + ready + returnCount;
+      const received = receivedById[tech.id] ?? 0;
+      const completed = completedById[tech.id] ?? 0;
+      const deliveredJobs = deliveredByTech.get(tech.id) ?? [];
+      const delivered = deliveredJobs.length;
+      const totalCollection = sumAmount(deliveredJobs);
+      const { lowest, highest } = billRange(deliveredJobs);
 
-    return {
-      id: tech.id,
-      name: tech.name,
-      received,
-      pending,
-      waitingForApproval,
-      ready,
-      return: returnCount,
-      activeAssigned,
-      deliveredAssigned,
-      completed,
-      delivered,
-      totalCollection,
-      averageBill: avgAmount(deliveredJobs),
-      lowestBill: lowest,
-      highestBill: highest,
-      completionRate:
-        received > 0 ? Math.round((delivered / received) * 100) : null,
-    };
-  });
+      return {
+        id: tech.id,
+        name: tech.name,
+        // Live backlog (currently assigned)
+        pending,
+        waitingForApproval,
+        ready,
+        return: returnCount,
+        activePipeline,
+        // Period performance
+        received,
+        completed,
+        delivered,
+        totalCollection,
+        averageBill: avgAmount(deliveredJobs),
+        lowestBill: lowest,
+        highestBill: highest,
+      };
+    })
+    .sort((a, b) => {
+      if (b.totalCollection !== a.totalCollection) {
+        return b.totalCollection - a.totalCollection;
+      }
+      return b.activePipeline - a.activePipeline;
+    });
 
   const totals = technicianReports.reduce(
     (acc, row) => ({
@@ -180,7 +268,7 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       waitingForApproval: acc.waitingForApproval + row.waitingForApproval,
       ready: acc.ready + row.ready,
       return: acc.return + row.return,
-      activeAssigned: acc.activeAssigned + row.activeAssigned,
+      activePipeline: acc.activePipeline + row.activePipeline,
       completed: acc.completed + row.completed,
       delivered: acc.delivered + row.delivered,
       totalCollection: acc.totalCollection + row.totalCollection,
@@ -191,7 +279,7 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       waitingForApproval: 0,
       ready: 0,
       return: 0,
-      activeAssigned: 0,
+      activePipeline: 0,
       completed: 0,
       delivered: 0,
       totalCollection: 0,
@@ -201,13 +289,24 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
   return { period, technicianReports, totals };
 }
 
-async function buildBrandApplianceReports(period: ReportPeriod, start: Date, end: Date) {
+async function buildBrandApplianceReports(
+  period: ReportPeriod,
+  start: Date,
+  end: Date
+) {
   const jobsInPeriod = await prisma.jobCard.findMany({
     where: { receivedAt: { gte: start, lt: end } },
-    select: { serviceAmount: true, status: true, applianceType: true, brand: true },
+    select: {
+      serviceAmount: true,
+      status: true,
+      applianceType: true,
+      brand: true,
+    },
   });
 
-  const applianceTypes = [...new Set(jobsInPeriod.map((j) => j.applianceType))].sort();
+  const applianceTypes = [
+    ...new Set(jobsInPeriod.map((j) => j.applianceType)),
+  ].sort();
   const brands = [...new Set(jobsInPeriod.map((j) => j.brand))].sort();
 
   const applianceReports = applianceTypes.map((applianceType) => {
@@ -241,12 +340,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
   }
 
-  const period = (request.nextUrl.searchParams.get("period") ?? "today") as ReportPeriod;
+  const periodRaw = request.nextUrl.searchParams.get("period") ?? "today";
+  const period: ReportPeriod = isReportPeriod(periodRaw) ? periodRaw : "today";
   const section = (request.nextUrl.searchParams.get("section") ??
     "summary") as ReportSection;
   const { start, end } = getPeriodRange(period);
 
-  const cacheKey = `reports:${section}:${period}`;
+  const cacheKey = `reports:v5:${section}:${period}`;
   const cached = getCached<unknown>(cacheKey);
   if (cached) {
     return NextResponse.json(cached);

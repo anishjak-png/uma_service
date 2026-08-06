@@ -14,7 +14,7 @@ import { StaffTab } from "./StaffTab";
 import { DevicesTab } from "./DevicesTab";
 import { OutsourceTab } from "./OutsourceTab";
 import { reportJobsHref } from "@/lib/report-links";
-import type { ReportPeriod } from "@/lib/reports";
+import { periodLabel, type ReportPeriod } from "@/lib/reports";
 
 type Technician = {
   id: string;
@@ -1015,20 +1015,87 @@ function ReportLinkCard({
   );
 }
 
+const TECH_BAR_SERIES = [
+  { key: "received" as const, label: "Rec", color: "bg-slate-500" },
+  { key: "pending" as const, label: "Pend", color: "bg-amber-500" },
+  { key: "ready" as const, label: "Ready", color: "bg-emerald-500" },
+  { key: "delivered" as const, label: "Del", color: "bg-violet-500" },
+];
+
+/** Compact horizontal bars: Received, Pending, Ready, Delivered for one tech. */
+function TechStaffBarChart({
+  received,
+  pending,
+  ready,
+  delivered,
+  maxValue,
+}: {
+  received: number;
+  pending: number;
+  ready: number;
+  delivered: number;
+  maxValue: number;
+}) {
+  const scale = Math.max(1, maxValue);
+  const values = { received, pending, ready, delivered };
+
+  return (
+    <div className="min-w-0 flex-1 space-y-0.5">
+      {TECH_BAR_SERIES.map((s) => {
+        const v = values[s.key];
+        const pct = Math.round((v / scale) * 100);
+        return (
+          <div key={s.key} className="flex items-center gap-1.5">
+            <span className="w-7 shrink-0 text-[9px] font-medium text-slate-500">
+              {s.label}
+            </span>
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className={`h-full rounded-full ${s.color}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="w-4 shrink-0 text-right text-[10px] tabular-nums text-slate-700">
+              {v}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ReportsTab() {
-  const [period, setPeriod] = useState<"today" | "month" | "year">("today");
+  const [period, setPeriod] = useState<ReportPeriod>("today");
   const [reportSection, setReportSection] = useState<
     "summary" | "technicians" | "brands-appliances"
   >("summary");
   const [summary, setSummary] = useState<{
     summary: {
-      jobsReceived: number;
-      jobsDelivered: number;
-      totalJobs: number;
+      jobsCreated: number;
+      delivered: number;
+      undelivered: number;
+      undeliveredReady: number;
+      undeliveredReturn: number;
+      pendingOpen: number;
+      pendingOpenPending: number;
+      pendingOpenWaiting: number;
+      pendingOpenOutsourced: number;
+      pendingOpenWarranty: number;
       totalCollection: number;
+      jobsReturned: number;
+      jobsDeliveredReady: number;
+      jobsDeliveredReturn: number;
+      pendingLive: number;
+      returnLive: number;
+      outsourcedLive: number;
+      warrantyLive: number;
+      readyLive: number;
+      readyLiveAmount: number;
     };
     pendingAging: { over3Days: number; over7Days: number; over15Days: number };
-    readyNotDelivered: { count: number; totalAmount: number };
+    undeliveredAging: { over3Days: number; over7Days: number; over15Days: number };
+    readyNotDelivered?: { count: number; totalAmount: number };
   } | null>(null);
   const [technicianData, setTechnicianData] = useState<{
     technicianReports: Array<{
@@ -1039,14 +1106,13 @@ function ReportsTab() {
       waitingForApproval: number;
       ready: number;
       return: number;
-      activeAssigned: number;
+      activePipeline: number;
       completed: number;
       delivered: number;
       totalCollection: number;
       averageBill: number;
       lowestBill: number;
       highestBill: number;
-      completionRate: number | null;
     }>;
     totals: {
       received: number;
@@ -1054,7 +1120,7 @@ function ReportsTab() {
       waitingForApproval: number;
       ready: number;
       return: number;
-      activeAssigned: number;
+      activePipeline: number;
       completed: number;
       delivered: number;
       totalCollection: number;
@@ -1138,23 +1204,22 @@ function ReportsTab() {
   const formatRs = (n: number) =>
     `Rs.${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-  const periodFilter = period as ReportPeriod;
-
   return (
-    <div className="space-y-6">
-      <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1">
         {(
           [
             { id: "today", label: "Today" },
-            { id: "month", label: "This Month" },
-            { id: "year", label: "This Year" },
+            { id: "week", label: "This week" },
+            { id: "month", label: "This month" },
+            { id: "year", label: "This year" },
           ] as const
         ).map((p) => (
           <button
             key={p.id}
             type="button"
             onClick={() => setPeriod(p.id)}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+            className={`min-w-0 flex-1 rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${
               period === p.id
                 ? "bg-emerald-600 text-white"
                 : "text-slate-600 hover:bg-slate-50"
@@ -1170,7 +1235,7 @@ function ReportsTab() {
           [
             { id: "summary", label: "Overview" },
             { id: "technicians", label: "Technicians" },
-            { id: "brands-appliances", label: "Brands & Appliances" },
+            { id: "brands-appliances", label: "Brands" },
           ] as const
         ).map((s) => (
           <button
@@ -1198,38 +1263,117 @@ function ReportsTab() {
 
       {reportSection === "summary" && summary && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              label={period === "today" ? "Jobs Received Today" : "Total Jobs"}
-              value={
-                period === "today" ? summary.summary.jobsReceived : summary.summary.totalJobs
-              }
-              href={reportJobsHref({ receivedPeriod: periodFilter })}
-            />
-            <StatCard
-              label={period === "today" ? "Delivered Today" : "Jobs Delivered"}
-              value={summary.summary.jobsDelivered}
-              href={reportJobsHref({ deliveredPeriod: periodFilter })}
-            />
-            <StatCard
-              label="Total Collection"
-              value={formatRs(summary.summary.totalCollection)}
-              valueClassName="text-emerald-800"
-              href={reportJobsHref({ deliveredPeriod: periodFilter })}
-            />
-            <StatCard
-              label="Ready (Not Delivered)"
-              value={summary.readyNotDelivered.count}
-              subtext={formatRs(summary.readyNotDelivered.totalAmount)}
-              href={reportJobsHref({ status: "Ready" })}
-            />
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {periodLabel(period)} · jobs created
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <StatCard
+                label="Jobs created"
+                value={summary.summary.jobsCreated}
+                href={reportJobsHref({ receivedPeriod: period })}
+              />
+              <StatCard
+                label="Delivered"
+                value={summary.summary.delivered}
+                href={reportJobsHref({
+                  receivedPeriod: period,
+                  pipeline: "delivered",
+                })}
+              />
+              <StatCard
+                label="Undelivered"
+                value={summary.summary.undelivered}
+                subtext={`Ready ${summary.summary.undeliveredReady} · Return ${summary.summary.undeliveredReturn}`}
+                href={reportJobsHref({
+                  receivedPeriod: period,
+                  pipeline: "undelivered",
+                })}
+                valueClassName="text-emerald-700"
+              />
+              <StatCard
+                label="Pending"
+                value={summary.summary.pendingOpen}
+                subtext={`P ${summary.summary.pendingOpenPending} · O ${summary.summary.pendingOpenOutsourced} · W ${summary.summary.pendingOpenWarranty}`}
+                href={reportJobsHref({
+                  receivedPeriod: period,
+                  pipeline: "pending",
+                })}
+                valueClassName="text-blue-700"
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Created = Delivered + Undelivered + Pending (same period jobs by
+              current status).
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <StatCard
+                label="Collection"
+                value={formatRs(summary.summary.totalCollection)}
+                subtext={`${summary.summary.jobsDeliveredReady} repair · ${summary.summary.jobsDeliveredReturn} return`}
+                href={reportJobsHref({
+                  receivedPeriod: period,
+                  pipeline: "delivered",
+                })}
+                valueClassName="text-emerald-800"
+              />
+              <StatCard
+                label="Returned"
+                value={summary.summary.jobsReturned}
+                subtext="Return → Delivered only"
+                href={reportJobsHref({
+                  receivedPeriod: period,
+                  pipeline: "returned",
+                })}
+                valueClassName="text-orange-700"
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Live activity
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <StatCard
+                label="Pending"
+                value={summary.summary.pendingLive}
+                href={reportJobsHref({ status: "Pending" })}
+                valueClassName="text-blue-700"
+              />
+              <StatCard
+                label="Ready"
+                value={summary.summary.readyLive}
+                subtext={formatRs(summary.summary.readyLiveAmount)}
+                href={reportJobsHref({ status: "Ready" })}
+                valueClassName="text-emerald-700"
+              />
+              <StatCard
+                label="Return"
+                value={summary.summary.returnLive}
+                href={reportJobsHref({ status: "Return" })}
+                valueClassName="text-orange-700"
+              />
+              <StatCard
+                label="Outsourced"
+                value={summary.summary.outsourcedLive}
+                href={reportJobsHref({ status: "Outsourced" })}
+                valueClassName="text-purple-700"
+              />
+              <StatCard
+                label="Warranty"
+                value={summary.summary.warrantyLive}
+                href="/jobs/pending?warranty=true"
+                valueClassName="text-sky-700"
+              />
+            </div>
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Pending Aging</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Pending aging</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-3 text-sm">
+            <CardContent className="grid grid-cols-3 gap-2 text-sm">
               <ReportLinkCard
                 href={reportJobsHref({ status: "Pending", minAgeDays: 3 })}
                 className="bg-amber-50"
@@ -1250,6 +1394,32 @@ function ReportsTab() {
               />
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Undelivered aging</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-3 gap-2 text-sm">
+              <ReportLinkCard
+                href={reportJobsHref({ pipeline: "undelivered", minAgeDays: 3 })}
+                className="bg-amber-50"
+                label="> 3 days"
+                value={summary.undeliveredAging.over3Days}
+              />
+              <ReportLinkCard
+                href={reportJobsHref({ pipeline: "undelivered", minAgeDays: 7 })}
+                className="bg-orange-50"
+                label="> 7 days"
+                value={summary.undeliveredAging.over7Days}
+              />
+              <ReportLinkCard
+                href={reportJobsHref({ pipeline: "undelivered", minAgeDays: 15 })}
+                className="bg-red-50"
+                label="> 15 days"
+                value={summary.undeliveredAging.over15Days}
+              />
+            </CardContent>
+          </Card>
         </>
       )}
 
@@ -1259,115 +1429,53 @@ function ReportsTab() {
             <p className="text-center text-slate-500">Loading technician reports…</p>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                  label="Received (Assigned)"
-                  value={technicianData.totals.received}
-                  subtext={
-                    period === "today"
-                      ? "Jobs received today"
-                      : period === "month"
-                        ? "This month"
-                        : "This year"
-                  }
-                  href={reportJobsHref({ receivedPeriod: periodFilter })}
-                />
-                <StatCard
-                  label="Active Pipeline"
-                  value={technicianData.totals.activeAssigned}
-                  subtext={`${technicianData.totals.pending} pending · ${technicianData.totals.ready} ready`}
-                  href={reportJobsHref({ active: true })}
-                />
-                <StatCard
-                  label="Completed (Ready)"
-                  value={technicianData.totals.completed}
-                  subtext="Marked ready in period"
-                  href={reportJobsHref({ readyPeriod: periodFilter })}
-                />
-                <StatCard
-                  label="Delivered Collection"
-                  value={formatRs(technicianData.totals.totalCollection)}
-                  subtext={`${technicianData.totals.delivered} delivered`}
-                  valueClassName="text-emerald-800"
-                  href={reportJobsHref({ deliveredPeriod: periodFilter })}
-                />
-              </div>
-
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Technician-wise Analysis</CardTitle>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">
+                    Staff · {periodLabel(period)}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="overflow-x-auto">
-                  <p className="mb-3 text-xs text-slate-500">
-                    Received and completed/delivered counts use the selected period.
-                    Pending, ready, and return show current assigned backlog.
+                <CardContent className="space-y-2">
+                  {(() => {
+                    const maxValue = Math.max(
+                      1,
+                      ...technicianData.technicianReports.flatMap((r) => [
+                        r.received,
+                        r.pending,
+                        r.ready,
+                        r.delivered,
+                      ])
+                    );
+                    return technicianData.technicianReports.map((row) => (
+                      <Link
+                        key={row.id}
+                        href={reportJobsHref({
+                          technicianId: row.id,
+                          active: true,
+                        })}
+                        className="flex items-start gap-2 rounded-md px-1 py-1.5 hover:bg-slate-50"
+                      >
+                        <span className="w-20 shrink-0 truncate pt-0.5 text-sm font-medium text-slate-900 sm:w-24">
+                          {row.name}
+                        </span>
+                        <TechStaffBarChart
+                          received={row.received}
+                          pending={row.pending}
+                          ready={row.ready}
+                          delivered={row.delivered}
+                          maxValue={maxValue}
+                        />
+                      </Link>
+                    ));
+                  })()}
+                  <p className="pt-1 text-xs text-slate-500">
+                    Rec &amp; Del = {periodLabel(period).toLowerCase()}. Pend &amp;
+                    Ready = live. Bars share the same scale across staff.
                   </p>
-                  <table className="w-full min-w-[960px] text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-slate-500">
-                        <th className="pb-2 pr-3">Technician</th>
-                        <th className="pb-2 pr-3">Received</th>
-                        <th className="pb-2 pr-3">Pending</th>
-                        <th className="pb-2 pr-3">Waiting</th>
-                        <th className="pb-2 pr-3">Ready</th>
-                        <th className="pb-2 pr-3">Return</th>
-                        <th className="pb-2 pr-3">Active</th>
-                        <th className="pb-2 pr-3">Completed</th>
-                        <th className="pb-2 pr-3">Delivered</th>
-                        <th className="pb-2 pr-3">Collection</th>
-                        <th className="pb-2 pr-3">Avg Bill</th>
-                        <th className="pb-2 pr-3">Rate</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {technicianData.technicianReports.map((row) => (
-                        <tr key={row.id} className="border-b border-slate-100">
-                          <td className="py-2 pr-3 font-medium text-slate-900">
-                            {row.name}
-                          </td>
-                          <td className="py-2 pr-3">{row.received}</td>
-                          <td className="py-2 pr-3 text-amber-700">{row.pending}</td>
-                          <td className="py-2 pr-3">{row.waitingForApproval}</td>
-                          <td className="py-2 pr-3 text-emerald-700">{row.ready}</td>
-                          <td className="py-2 pr-3 text-orange-700">{row.return}</td>
-                          <td className="py-2 pr-3 font-medium">{row.activeAssigned}</td>
-                          <td className="py-2 pr-3">{row.completed}</td>
-                          <td className="py-2 pr-3">{row.delivered}</td>
-                          <td className="py-2 pr-3">{formatRs(row.totalCollection)}</td>
-                          <td className="py-2 pr-3">
-                            {row.delivered > 0
-                              ? formatRs(Math.round(row.averageBill))
-                              : "—"}
-                          </td>
-                          <td className="py-2 pr-3">
-                            {row.completionRate != null ? `${row.completionRate}%` : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className="bg-slate-50 font-semibold text-slate-900">
-                        <td className="py-2 pr-3">All technicians</td>
-                        <td className="py-2 pr-3">{technicianData.totals.received}</td>
-                        <td className="py-2 pr-3">{technicianData.totals.pending}</td>
-                        <td className="py-2 pr-3">
-                          {technicianData.totals.waitingForApproval}
-                        </td>
-                        <td className="py-2 pr-3">{technicianData.totals.ready}</td>
-                        <td className="py-2 pr-3">{technicianData.totals.return}</td>
-                        <td className="py-2 pr-3">{technicianData.totals.activeAssigned}</td>
-                        <td className="py-2 pr-3">{technicianData.totals.completed}</td>
-                        <td className="py-2 pr-3">{technicianData.totals.delivered}</td>
-                        <td className="py-2 pr-3">
-                          {formatRs(technicianData.totals.totalCollection)}
-                        </td>
-                        <td className="py-2 pr-3">—</td>
-                        <td className="py-2 pr-3">—</td>
-                      </tr>
-                    </tbody>
-                  </table>
                 </CardContent>
               </Card>
 
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-3">
                 {technicianData.technicianReports.map((row) => (
                   <Card key={row.id}>
                     <CardHeader className="pb-2">
@@ -1383,87 +1491,99 @@ function ReportsTab() {
                         </Link>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-3 text-sm">
-                      <ReportLinkCard
-                        href={reportJobsHref({
-                          technicianId: row.id,
-                          receivedPeriod: periodFilter,
-                        })}
-                        className="bg-slate-50"
-                        label="Received"
-                        value={row.received}
-                      />
-                      <ReportLinkCard
-                        href={reportJobsHref({
-                          technicianId: row.id,
-                          status: "Pending",
-                        })}
-                        className="bg-amber-50"
-                        label="Pending"
-                        value={row.pending}
-                      />
-                      <ReportLinkCard
-                        href={reportJobsHref({
-                          technicianId: row.id,
-                          status: "Ready",
-                        })}
-                        className="bg-emerald-50"
-                        label="Ready"
-                        value={row.ready}
-                      />
-                      <ReportLinkCard
-                        href={reportJobsHref({
-                          completedByTechnicianId: row.id,
-                          readyPeriod: periodFilter,
-                        })}
-                        className="bg-blue-50"
-                        label="Completed"
-                        value={row.completed}
-                      />
-                      <ReportLinkCard
-                        href={reportJobsHref({
-                          completedByTechnicianId: row.id,
-                          deliveredPeriod: periodFilter,
-                        })}
-                        className="bg-violet-50"
-                        label="Delivered"
-                        value={row.delivered}
-                      />
-                      <ReportLinkCard
-                        href={reportJobsHref({
-                          completedByTechnicianId: row.id,
-                          deliveredPeriod: periodFilter,
-                        })}
-                        className="bg-green-50"
-                        label="Collection"
-                        value={formatRs(row.totalCollection)}
-                      />
-                      <div className="col-span-2 grid grid-cols-2 gap-2">
-                        <ReportLinkCard
-                          href={reportJobsHref({
-                            technicianId: row.id,
-                            status: "WaitingForCustomerApproval",
-                          })}
-                          className="border border-slate-200 bg-white"
-                          label="Waiting"
-                          value={row.waitingForApproval}
-                        />
-                        <ReportLinkCard
-                          href={reportJobsHref({
-                            technicianId: row.id,
-                            status: "Return",
-                          })}
-                          className="border border-slate-200 bg-white"
-                          label="Return"
-                          value={row.return}
-                        />
-                      </div>
-                      {row.completionRate != null && row.delivered > 0 ? (
-                        <p className="col-span-2 text-xs text-slate-600">
-                          Delivery rate {row.completionRate}% · Bills{" "}
-                          {formatRs(row.lowestBill)} – {formatRs(row.highestBill)}
+                    <CardContent className="space-y-3">
+                      <div>
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Live now
                         </p>
-                      ) : null}
+                        <div className="grid grid-cols-4 gap-1.5 text-sm">
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              technicianId: row.id,
+                              status: "Pending",
+                            })}
+                            className="bg-amber-50 px-2 py-2"
+                            label="Pending"
+                            value={row.pending}
+                          />
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              technicianId: row.id,
+                              status: "Ready",
+                            })}
+                            className="bg-emerald-50 px-2 py-2"
+                            label="Ready"
+                            value={row.ready}
+                          />
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              technicianId: row.id,
+                              status: "WaitingForCustomerApproval",
+                            })}
+                            className="bg-white px-2 py-2 ring-1 ring-slate-200"
+                            label="Waiting"
+                            value={row.waitingForApproval}
+                          />
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              technicianId: row.id,
+                              status: "Return",
+                            })}
+                            className="bg-orange-50 px-2 py-2"
+                            label="Return"
+                            value={row.return}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          {periodLabel(period)}
+                        </p>
+                        <div className="grid grid-cols-2 gap-1.5 text-sm sm:grid-cols-4">
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              technicianId: row.id,
+                              receivedPeriod: period,
+                            })}
+                            className="bg-slate-50 px-2 py-2"
+                            label="Received"
+                            value={row.received}
+                          />
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              completedByTechnicianId: row.id,
+                              readyPeriod: period,
+                            })}
+                            className="bg-blue-50 px-2 py-2"
+                            label="Completed"
+                            value={row.completed}
+                          />
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              completedByTechnicianId: row.id,
+                              deliveredPeriod: period,
+                            })}
+                            className="bg-violet-50 px-2 py-2"
+                            label="Delivered"
+                            value={row.delivered}
+                          />
+                          <ReportLinkCard
+                            href={reportJobsHref({
+                              completedByTechnicianId: row.id,
+                              deliveredPeriod: period,
+                            })}
+                            className="bg-green-50 px-2 py-2"
+                            label="Collection"
+                            value={formatRs(row.totalCollection)}
+                          />
+                        </div>
+                        {row.delivered > 0 ? (
+                          <p className="mt-1.5 text-xs text-slate-500">
+                            Avg {formatRs(Math.round(row.averageBill))} · Bills{" "}
+                            {formatRs(row.lowestBill)} – {formatRs(row.highestBill)}
+                          </p>
+                        ) : null}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -1481,42 +1601,60 @@ function ReportsTab() {
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Appliance-wise</CardTitle>
+                  <CardTitle className="text-base">
+                    Appliance-wise · {periodLabel(period)}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  {brandData.applianceReports.map((row) => (
-                    <Link
-                      key={row.applianceType}
-                      href={reportJobsHref({ applianceType: row.applianceType })}
-                      className="flex justify-between gap-2 rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
-                    >
-                      <span className="text-slate-700">{row.applianceType}</span>
-                      <span className="text-right text-slate-900">
-                        {row.totalJobs} jobs · {formatRs(row.totalCollection)} · avg{" "}
-                        {formatRs(Math.round(row.averageServiceAmount))}
-                      </span>
-                    </Link>
-                  ))}
+                  {brandData.applianceReports.length === 0 ? (
+                    <p className="text-slate-500">No jobs in this period</p>
+                  ) : (
+                    brandData.applianceReports.map((row) => (
+                      <Link
+                        key={row.applianceType}
+                        href={reportJobsHref({
+                          applianceType: row.applianceType,
+                          receivedPeriod: period,
+                        })}
+                        className="flex justify-between gap-2 rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
+                      >
+                        <span className="text-slate-700">{row.applianceType}</span>
+                        <span className="text-right text-slate-900">
+                          {row.totalJobs} jobs · {formatRs(row.totalCollection)} · avg{" "}
+                          {formatRs(Math.round(row.averageServiceAmount))}
+                        </span>
+                      </Link>
+                    ))
+                  )}
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Brand-wise</CardTitle>
+                  <CardTitle className="text-base">
+                    Brand-wise · {periodLabel(period)}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  {brandData.brandReports.map((row) => (
-                    <Link
-                      key={row.brand}
-                      href={reportJobsHref({ brand: row.brand })}
-                      className="flex justify-between rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
-                    >
-                      <span className="text-slate-700">{row.brand}</span>
-                      <span className="font-semibold text-slate-900">
-                        {row.totalJobs} · {formatRs(row.totalCollection)}
-                      </span>
-                    </Link>
-                  ))}
+                  {brandData.brandReports.length === 0 ? (
+                    <p className="text-slate-500">No jobs in this period</p>
+                  ) : (
+                    brandData.brandReports.map((row) => (
+                      <Link
+                        key={row.brand}
+                        href={reportJobsHref({
+                          brand: row.brand,
+                          receivedPeriod: period,
+                        })}
+                        className="flex justify-between rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
+                      >
+                        <span className="text-slate-700">{row.brand}</span>
+                        <span className="font-semibold text-slate-900">
+                          {row.totalJobs} · {formatRs(row.totalCollection)}
+                        </span>
+                      </Link>
+                    ))
+                  )}
                 </CardContent>
               </Card>
             </div>
