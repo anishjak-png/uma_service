@@ -3,8 +3,7 @@
 import { AppShell } from "@/components/AppShell";
 import { JobListCard } from "@/components/JobListCard";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
-import { formatCurrency } from "@/lib/currency";
-import { formatDateTime } from "@/lib/jobs";
+import { formatDoneDatestamp } from "@/lib/jobs";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -130,7 +129,7 @@ export default function DeliveryContent() {
             const appliance = [job.brand, job.applianceType]
               .filter(Boolean)
               .join(" ");
-            const readyLabel = job.readyAt ? formatDateTime(job.readyAt) : null;
+            const doneLabel = formatDoneDatestamp(job.readyAt);
             return (
               <JobListCard
                 key={job.id}
@@ -139,18 +138,10 @@ export default function DeliveryContent() {
                 status={job.status}
                 customerName={job.customer.name}
                 mobile={job.customer.mobile}
-                applianceLine={[appliance, readyLabel].filter(Boolean).join(" · ")}
-                showServiceAmount={false}
-                badge={
-                  <div className="flex items-center gap-1.5">
-                    {job.serviceAmount != null && (
-                      <span className="text-xs font-bold text-emerald-700">
-                        {formatCurrency(job.serviceAmount)}
-                      </span>
-                    )}
-                    <JobStatusBadge status={job.status} />
-                  </div>
-                }
+                applianceLine={appliance}
+                serviceAmount={job.serviceAmount}
+                meta={doneLabel ?? undefined}
+                badge={<JobStatusBadge status={job.status} />}
                 footer={
                   <button
                     onClick={() => markDelivered(job)}

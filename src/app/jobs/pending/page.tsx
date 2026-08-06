@@ -14,7 +14,11 @@ import { TechnicianJobTracker } from "@/components/TechnicianJobTracker";
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/components/AuthProvider";
 import { ACTIVE_STATUSES } from "@/lib/constants";
-import { formatDateTime } from "@/lib/jobs";
+import { formatDateTime, formatDoneDatestamp } from "@/lib/jobs";
+import {
+  jobAssigneeName,
+  shouldShowJobAssignee,
+} from "@/lib/job-assignee-display";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, Suspense } from "react";
@@ -27,6 +31,8 @@ type PendingJob = {
   brand: string;
   complaint: string;
   receivedAt: string;
+  readyAt?: string | null;
+  serviceAmount?: number | null;
   assignedTechnician?: { name: string } | null;
   outsourcedTo?: { id: string; name: string } | null;
   isWarranty?: boolean;
@@ -274,10 +280,25 @@ function PendingJobsContent() {
     if (job.status === "Outsourced" && job.outsourcedTo) {
       return `With ${job.outsourcedTo.name}`;
     }
-    if (!isTechnician && job.assignedTechnician) {
-      return job.assignedTechnician.name;
-    }
     return undefined;
+  }
+
+  function buildPendingMeta(job: PendingJob) {
+    return [
+      jobMeta(job),
+      `Received ${formatDateTime(job.receivedAt)}`,
+      formatDoneDatestamp(job.readyAt),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  function shouldShowAssignee(job: PendingJob) {
+    return shouldShowJobAssignee(
+      job.status,
+      role as "admin" | "reception" | "technician" | null,
+      scope
+    );
   }
 
   return (
@@ -434,9 +455,12 @@ function PendingJobsContent() {
                 .filter(Boolean)
                 .join(" ")}
               complaint={job.complaint}
+              serviceAmount={job.serviceAmount}
               showServiceAmount={!isTechnician}
               emphasis={warrantyEmphasis(job)}
-              meta={jobMeta(job)}
+              showAssignee={shouldShowAssignee(job)}
+              assigneeName={jobAssigneeName(job.assignedTechnician)}
+              meta={buildPendingMeta(job)}
             />
           ))}
         </div>

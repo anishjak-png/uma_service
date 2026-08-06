@@ -217,6 +217,8 @@ export default function JobDetailPage() {
   const [technicians, setTechnicians] = useState<Array<{ id: string; name: string }>>([]);
   const [editCompletedById, setEditCompletedById] = useState("");
   const [showCompletedByEdit, setShowCompletedByEdit] = useState(false);
+  const [editAssigneeId, setEditAssigneeId] = useState("");
+  const [showAssigneeEdit, setShowAssigneeEdit] = useState(false);
   const [outsourcePartners, setOutsourcePartners] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -270,6 +272,7 @@ export default function JobDetailPage() {
     setReadyAmount(data.serviceAmount != null ? String(data.serviceAmount) : "");
     setEditAmount(data.serviceAmount != null ? String(data.serviceAmount) : "");
     setEditCompletedById(data.completedByTechnician?.id ?? "");
+    setEditAssigneeId(data.assignedTechnician?.id ?? "");
     setPurchaseDateEdit(toDateInputValue(data.warrantyPurchaseDate));
     const accessories = parseAccessories(data.accessories);
     setAccessoryQty(accessoriesToQtyMap(accessories));
@@ -329,6 +332,7 @@ export default function JobDetailPage() {
       setShowAmountEdit(false);
       setShowOutsourceForm(false);
       setShowConvertWarrantyForm(false);
+      setShowAssigneeEdit(false);
       if (data.warrantyPurchaseDate !== undefined) {
         setPurchaseDateEdit(toDateInputValue(data.warrantyPurchaseDate));
         setEditingPurchaseDate(false);
@@ -481,6 +485,13 @@ export default function JobDetailPage() {
     setShowCompletedByEdit(false);
   }
 
+  async function handleSaveAssignee() {
+    await updateJob({
+      assignedTechnicianId: editAssigneeId || null,
+    });
+    setShowAssigneeEdit(false);
+  }
+
   async function uploadProductPhotoFiles(files: File[]) {
     if (!job || files.length === 0) return;
     const existing = parseProductPhotos(job.productPhotos);
@@ -627,6 +638,8 @@ export default function JobDetailPage() {
   const showFinancials = isStaff || isAdmin;
   const isLocked = isDeliveredTerminal(job.status) && !isAdmin;
   const canAdminEditAmount = isAdmin && job.readyAt != null && !isLocked;
+  const canEditAssignee =
+    isStaff && !isLocked && !job.isWarranty && job.status !== "Outsourced";
 
   const accessories = parseAccessories(job.accessories);
   const productLine = [job.brand, job.applianceType, job.model]
@@ -973,11 +986,64 @@ export default function JobDetailPage() {
               {job.physicalCondition}
             </CompactRow>
           )}
-          <CompactRow label={job.isWarranty ? "Warranty" : job.status === "Outsourced" ? "Outsource" : "Assignee"}>
-            {assigneeLabel}
-            {!job.isWarranty && job.status === "Outsourced" && job.outsourcedAt
-              ? ` · ${formatDateTime(job.outsourcedAt)}`
-              : ""}
+          <CompactRow
+            label={job.isWarranty ? "Warranty" : job.status === "Outsourced" ? "Outsource" : "Assignee"}
+            wrap={canEditAssignee && showAssigneeEdit}
+          >
+            {canEditAssignee && showAssigneeEdit ? (
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <select
+                  value={editAssigneeId}
+                  onChange={(e) => setEditAssigneeId(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  <option value="">Unassigned</option>
+                  {technicians.map((tech) => (
+                    <option key={tech.id} value={tech.id}>
+                      {tech.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleSaveAssignee}
+                    disabled={saving}
+                    className="flex-1 rounded-md bg-emerald-600 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditAssigneeId(job.assignedTechnician?.id ?? "");
+                      setShowAssigneeEdit(false);
+                    }}
+                    className="flex-1 rounded-md border border-slate-300 py-1.5 text-xs"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="min-w-0 truncate text-slate-900">
+                  {assigneeLabel}
+                  {!job.isWarranty && job.status === "Outsourced" && job.outsourcedAt
+                    ? ` · ${formatDateTime(job.outsourcedAt)}`
+                    : ""}
+                </span>
+                {canEditAssignee && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAssigneeEdit(true)}
+                    className="shrink-0 text-xs font-medium text-emerald-700 hover:underline"
+                  >
+                    {job.assignedTechnician ? "Change" : "Assign"}
+                  </button>
+                )}
+              </div>
+            )}
           </CompactRow>
           <CompactRow label="Completed">{completedByLabel}</CompactRow>
 

@@ -85,27 +85,36 @@ export function sortJobsByPendingDays<T extends { receivedAt: string }>(
   );
 }
 
-/** Date and time for job timestamps (received, completed, delivered). */
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** DD/MM/YY in local timezone. */
+export function formatDate(iso: string | Date): string {
+  const date = typeof iso === "string" ? new Date(iso) : iso;
+  const day = pad2(date.getDate());
+  const month = pad2(date.getMonth() + 1);
+  const year = pad2(date.getFullYear() % 100);
+  return `${day}/${month}/${year}`;
+}
+
+/** DD/MM/YY with time for job timestamps (received, completed, delivered). */
 export function formatDateTime(iso: string | Date): string {
   const date = typeof iso === "string" ? new Date(iso) : iso;
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
+  const time = date.toLocaleString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   });
+  return `${formatDate(date)}, ${time}`;
 }
 
-/** Date-only display (purchase date, etc.). */
-export function formatDate(iso: string | Date): string {
-  const date = typeof iso === "string" ? new Date(iso) : iso;
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+/** Meta line for when a job was marked ready (done). */
+export function formatDoneDatestamp(
+  readyAt: string | Date | null | undefined
+): string | null {
+  if (readyAt == null || readyAt === "") return null;
+  return `Done ${formatDateTime(readyAt)}`;
 }
 
 /** Parse optional YYYY-MM-DD into a UTC midnight Date, or null to clear. */

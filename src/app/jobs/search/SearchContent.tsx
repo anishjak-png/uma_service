@@ -9,7 +9,11 @@ import {
 } from "@/components/TechnicianJobScopeToggle";
 import { useAuth } from "@/components/AuthProvider";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
-import { formatMobileDisplay, formatDateTime } from "@/lib/jobs";
+import { formatMobileDisplay, formatDateTime, formatDoneDatestamp } from "@/lib/jobs";
+import {
+  jobAssigneeName,
+  shouldShowJobAssignee,
+} from "@/lib/job-assignee-display";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -25,6 +29,7 @@ type JobResult = {
   deliveredAt?: string | null;
   serviceAmount?: number | null;
   customer: { mobile: string; name?: string | null };
+  assignedTechnician?: { name: string } | null;
   outsourcedTo?: { id: string; name: string } | null;
   isWarranty?: boolean;
   warrantyTakenAt?: string | null;
@@ -445,6 +450,48 @@ export default function SearchContent() {
     response?.mode === "customer_pick" ? response.customers : [];
   const hasActiveSearch = Boolean(query.trim() || customerId || hasBrowseFilter);
 
+  function assigneeProps(job: JobResult) {
+    return {
+      showAssignee: shouldShowJobAssignee(
+        job.status,
+        role as "admin" | "reception" | "technician" | null,
+        scope
+      ),
+      assigneeName: jobAssigneeName(job.assignedTechnician),
+    };
+  }
+
+  function buildSearchMeta(job: JobResult) {
+    return [
+      isWarrantyJobStatus(job.status) && job.brand ? job.brand : null,
+      job.status === "Outsourced" && job.outsourcedTo
+        ? `With ${job.outsourcedTo.name}`
+        : null,
+      `Received ${formatDateTime(job.receivedAt)}`,
+      formatDoneDatestamp(job.readyAt),
+      job.deliveredAt ? `Delivered ${formatDateTime(job.deliveredAt)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  function searchCardProps(job: JobResult) {
+    return {
+      id: job.id,
+      jobNumber: job.jobNumber,
+      status: job.status,
+      customerName: job.customer.name,
+      mobile: job.customer.mobile,
+      applianceLine: [job.brand, job.applianceType].filter(Boolean).join(" "),
+      complaint: job.complaint,
+      serviceAmount: job.serviceAmount,
+      showServiceAmount: showAmounts,
+      emphasis: warrantyEmphasis(job),
+      meta: buildSearchMeta(job),
+      ...assigneeProps(job),
+    };
+  }
+
   return (
     <AppShell>
       {isTechnician && (
@@ -591,31 +638,7 @@ export default function SearchContent() {
       ) : jobs.length === 0 ? (
         <p className="text-center text-sm text-slate-500">No jobs found</p>
       ) : showSingleJob ? (
-        <JobListCard
-          id={jobs[0].id}
-          jobNumber={jobs[0].jobNumber}
-          status={jobs[0].status}
-          customerName={jobs[0].customer.name}
-          mobile={jobs[0].customer.mobile}
-          applianceLine={[jobs[0].brand, jobs[0].applianceType].filter(Boolean).join(" ")}
-          complaint={jobs[0].complaint}
-          serviceAmount={jobs[0].serviceAmount}
-          showServiceAmount={showAmounts}
-          emphasis={warrantyEmphasis(jobs[0])}
-          meta={[
-            isWarrantyJobStatus(jobs[0].status) && jobs[0].brand
-              ? jobs[0].brand
-              : null,
-            jobs[0].status === "Outsourced" && jobs[0].outsourcedTo
-              ? `With ${jobs[0].outsourcedTo.name}`
-              : null,
-            `Received ${formatDateTime(jobs[0].receivedAt)}`,
-            jobs[0].readyAt ? `Done ${formatDateTime(jobs[0].readyAt)}` : null,
-            jobs[0].deliveredAt ? `Delivered ${formatDateTime(jobs[0].deliveredAt)}` : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        />
+        <JobListCard {...searchCardProps(jobs[0])} />
       ) : showCustomerHistory && customer ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2">
@@ -634,59 +657,13 @@ export default function SearchContent() {
             <CallCustomerButton mobile={customer.mobile} />
           </div>
           {jobs.map((job) => (
-            <JobListCard
-              key={job.id}
-              id={job.id}
-              jobNumber={job.jobNumber}
-              status={job.status}
-              customerName={job.customer.name}
-              mobile={job.customer.mobile}
-              applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
-              complaint={job.complaint}
-              serviceAmount={job.serviceAmount}
-              showServiceAmount={showAmounts}
-              emphasis={warrantyEmphasis(job)}
-              meta={[
-                isWarrantyJobStatus(job.status) && job.brand
-                  ? job.brand
-                  : null,
-                job.status === "Outsourced" && job.outsourcedTo
-                  ? `With ${job.outsourcedTo.name}`
-                  : null,
-                `Received ${formatDateTime(job.receivedAt)}`,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            />
+            <JobListCard key={job.id} {...searchCardProps(job)} />
           ))}
         </div>
       ) : (
         <div className="space-y-2">
           {jobs.map((job) => (
-            <JobListCard
-              key={job.id}
-              id={job.id}
-              jobNumber={job.jobNumber}
-              status={job.status}
-              customerName={job.customer.name}
-              mobile={job.customer.mobile}
-              applianceLine={[job.brand, job.applianceType].filter(Boolean).join(" ")}
-              complaint={job.complaint}
-              serviceAmount={job.serviceAmount}
-              showServiceAmount={showAmounts}
-              emphasis={warrantyEmphasis(job)}
-              meta={[
-                isWarrantyJobStatus(job.status) && job.brand
-                  ? job.brand
-                  : null,
-                job.status === "Outsourced" && job.outsourcedTo
-                  ? `With ${job.outsourcedTo.name}`
-                  : null,
-                `Received ${formatDateTime(job.receivedAt)}`,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            />
+            <JobListCard key={job.id} {...searchCardProps(job)} />
           ))}
         </div>
       )}
