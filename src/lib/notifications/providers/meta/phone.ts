@@ -7,10 +7,6 @@ type FormatMetaRecipientOptions = {
   allowInternational?: boolean;
 };
 
-/**
- * Convert a mobile number to Meta WhatsApp `to` format (E.164 without '+').
- * Example: 9842241388 → 919842241388
- */
 export function formatMetaRecipientE164(
   mobile: string,
   options?: FormatMetaRecipientOptions
@@ -46,4 +42,15 @@ export function formatMetaRecipientE164(
       ? "Invalid phone number for WhatsApp (expected 10–15 digits with country code)"
       : `Invalid mobile number for WhatsApp (expected 10-digit Indian number, got ${digits.length} digits)`,
   };
+}
+
+/** Convert Meta wa_id (e.g. 919842241388) to normalized 10-digit Indian mobile. */
+export function parseWaIdToMobile(waId: string): string | null {
+  const digits = waId.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) {
+    const local = digits.slice(2);
+    if (/^[6-9]\d{9}$/.test(local)) return local;
+  }
+  if (digits.length === 10 && /^[6-9]\d{9}$/.test(digits)) return digits;
+  return null;
 }

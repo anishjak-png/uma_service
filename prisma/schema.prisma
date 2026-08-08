@@ -17,6 +17,7 @@ model Customer {
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
   jobCards                   JobCard[]
+  whatsAppConversations      WhatsAppConversation[]
 }
 
 enum JobStatus {
@@ -185,6 +186,7 @@ model JobCard {
   statusHistory            StatusHistory[]
   printJobs                PrintJob[]
   notificationLogs         NotificationLog[]
+  whatsAppMessages         WhatsAppMessage[]
 
   @@index([customerId])
   @@index([status])
@@ -309,4 +311,54 @@ model NotificationLog {
 
   @@index([jobCardId, eventType, channel])
   @@index([createdAt])
+}
+
+enum WhatsAppMessageDirection {
+  inbound
+  outbound
+}
+
+enum WhatsAppMessageType {
+  text
+  image
+  unsupported
+}
+
+enum WhatsAppMessageStatus {
+  received
+  sent
+  failed
+}
+
+model WhatsAppConversation {
+  id                 String            @id @default(cuid())
+  customerMobile     String            @unique
+  customerId         String?
+  customer           Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lastMessageAt      DateTime          @default(now())
+  lastMessagePreview String?
+  unreadCount        Int               @default(0)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  messages           WhatsAppMessage[]
+
+  @@index([lastMessageAt])
+}
+
+model WhatsAppMessage {
+  id                 String                   @id @default(cuid())
+  conversationId     String
+  conversation       WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction          WhatsAppMessageDirection
+  wamid              String                   @unique
+  messageType        WhatsAppMessageType
+  body               String?
+  status             WhatsAppMessageStatus
+  sentByStaffUserId  String?
+  jobCardId          String?
+  jobCard            JobCard?                 @relation(fields: [jobCardId], references: [id], onDelete: SetNull)
+  rawPayload         String?
+  createdAt          DateTime                 @default(now())
+
+  @@index([conversationId, createdAt])
 }

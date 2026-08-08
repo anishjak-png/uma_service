@@ -2,6 +2,7 @@
 
 import { TEMPLATE_VARIABLE_HINTS } from "@/lib/notifications/default-templates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 type Settings = {
@@ -82,6 +83,14 @@ export function WhatsAppAutomationTab() {
     ok: boolean;
     text: string;
   } | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+
+  useEffect(() => {
+    const base =
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+      window.location.origin;
+    setWebhookUrl(`${base}/api/webhooks/whatsapp`);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -223,6 +232,49 @@ export function WhatsAppAutomationTab() {
           />
         </CardContent>
       </Card>
+
+      {provider === "meta" && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Inbound Webhook (Customer Replies)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-slate-700">
+            <p className="text-xs text-slate-500">
+              API-only numbers cannot use Meta Business Suite Inbox. Configure this
+              webhook so customer replies appear in{" "}
+              <Link href="/admin?tab=inbox" className="font-medium text-emerald-700 hover:underline">
+                Admin → Inbox
+              </Link>
+              .
+            </p>
+            <div>
+              <p className="mb-1 text-xs font-medium text-slate-600">Callback URL</p>
+              <code className="block break-all rounded-md bg-slate-100 px-2 py-1.5 text-xs">
+                {webhookUrl || "…"}
+              </code>
+            </div>
+            <ol className="list-decimal space-y-1 pl-4 text-xs text-slate-600">
+              <li>
+                Set <code className="rounded bg-slate-100 px-1">WHATSAPP_WEBHOOK_VERIFY_TOKEN</code>{" "}
+                and <code className="rounded bg-slate-100 px-1">META_APP_SECRET</code> in Vercel env
+              </li>
+              <li>
+                Meta Developer → App → WhatsApp → Configuration → paste Callback URL and verify token
+              </li>
+              <li>Subscribe webhook field: <strong>messages</strong></li>
+              <li>Reply to a template message from your phone to test</li>
+            </ol>
+            <a
+              href="https://developers.facebook.com/docs/whatsapp/cloud-api/guides/set-up-webhooks"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-xs font-medium text-emerald-700 hover:underline"
+            >
+              Meta webhook documentation →
+            </a>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2">

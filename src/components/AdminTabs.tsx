@@ -9,6 +9,7 @@ const tabs = [
   { id: "technicians", label: "Technicians" },
   { id: "appliances", label: "Appliances" },
   { id: "customers", label: "Customers" },
+  { id: "inbox", label: "Inbox" },
   { id: "whatsapp", label: "WhatsApp" },
 ] as const;
 
@@ -19,10 +20,12 @@ export function AdminTabs({
   active,
   onChange,
   pendingDeviceCount = 0,
+  inboxUnreadCount = 0,
 }: {
   active: AdminSettingsTab;
   onChange: (tab: AdminSettingsTab) => void;
   pendingDeviceCount?: number;
+  inboxUnreadCount?: number;
 }) {
   return (
     <div className="mb-3 flex flex-wrap gap-1 rounded-md border border-slate-200 bg-white p-0.5">
@@ -30,7 +33,9 @@ export function AdminTabs({
         const label =
           tab.id === "devices" && pendingDeviceCount > 0
             ? `${tab.label} (${pendingDeviceCount})`
-            : tab.label;
+            : tab.id === "inbox" && inboxUnreadCount > 0
+              ? `${tab.label} (${inboxUnreadCount})`
+              : tab.label;
         return (
           <button
             key={tab.id}

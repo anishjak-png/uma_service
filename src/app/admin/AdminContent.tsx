@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { WhatsAppAutomationTab } from "./WhatsAppAutomationTab";
+import { WhatsAppInboxTab } from "./WhatsAppInboxTab";
 import { StaffTab } from "./StaffTab";
 import { DevicesTab } from "./DevicesTab";
 import { OutsourceTab } from "./OutsourceTab";
@@ -60,11 +61,28 @@ export default function AdminContent() {
     tabFromUrl === "technicians" ||
     tabFromUrl === "appliances" ||
     tabFromUrl === "customers" ||
+    tabFromUrl === "inbox" ||
     tabFromUrl === "whatsapp"
       ? tabFromUrl
       : "devices";
 
   const [tab, setTab] = useState<AdminTab>(initialTab);
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!authLoaded || role !== "admin") return;
+
+    async function loadInboxUnread() {
+      const res = await fetch("/api/admin/whatsapp/conversations");
+      if (!res.ok) return;
+      const data = await res.json();
+      setInboxUnreadCount(data.totalUnread ?? 0);
+    }
+
+    void loadInboxUnread();
+    const interval = setInterval(() => void loadInboxUnread(), 30000);
+    return () => clearInterval(interval);
+  }, [authLoaded, role]);
 
   useEffect(() => {
     const requested = searchParams.get("tab");
@@ -75,6 +93,7 @@ export default function AdminContent() {
       requested === "technicians" ||
       requested === "appliances" ||
       requested === "customers" ||
+      requested === "inbox" ||
       requested === "whatsapp" ||
       requested === "reports"
     ) {
@@ -117,6 +136,7 @@ export default function AdminContent() {
           active={tab as AdminSettingsTab}
           onChange={handleSettingsTabChange}
           pendingDeviceCount={pendingDeviceCount}
+          inboxUnreadCount={inboxUnreadCount}
         />
       )}
       {tab === "devices" && <DevicesTab />}
@@ -125,6 +145,9 @@ export default function AdminContent() {
       {tab === "technicians" && <TechniciansTab />}
       {tab === "appliances" && <AppliancesTab />}
       {tab === "customers" && <CustomersTab />}
+      {tab === "inbox" && (
+        <WhatsAppInboxTab onUnreadChange={setInboxUnreadCount} />
+      )}
       {tab === "whatsapp" && <WhatsAppAutomationTab />}
       {tab === "reports" && <ReportsTab />}
     </AppShell>

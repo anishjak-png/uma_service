@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, isDeviceApproved } from "@/lib/session";
 
-const publicPaths = ["/", "/j", "/track", "/api/auth/login", "/device-pending"];
+const publicPaths = ["/", "/j", "/track", "/api/auth/login", "/device-pending", "/api/webhooks/whatsapp"];
 const publicPrefixes = ["/j/", "/api/track"];
 
 function isPublic(pathname: string): boolean {

@@ -57,6 +57,23 @@ export function canEditCompletedBy(role: StaffRole) {
   return role === "admin";
 }
 
+/** WhatsApp inbox — admin only for v1; extend to reception later. */
+export function canAccessWhatsAppInbox(role: StaffRole) {
+  return role === "admin";
+}
+
+export async function requireWhatsAppInboxAccess() {
+  const session = await getSession();
+  if (
+    !session.isLoggedIn ||
+    !canAccessWhatsAppInbox(session.role) ||
+    !isDeviceApproved(session)
+  ) {
+    return null;
+  }
+  return session;
+}
+
 /** Amount is locked once the job has been marked Ready at least once. */
 export function isServiceAmountLocked(job: { readyAt: Date | null }) {
   return job.readyAt != null;
