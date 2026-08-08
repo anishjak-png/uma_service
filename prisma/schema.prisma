@@ -353,6 +353,7 @@ model WhatsAppMessage {
   wamid              String                   @unique
   messageType        WhatsAppMessageType
   body               String?
+  mediaId            String?
   status             WhatsAppMessageStatus
   sentByStaffUserId  String?
   jobCardId          String?

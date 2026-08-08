@@ -3,6 +3,8 @@ import type { NotificationEventType } from "@prisma/client";
 import { formatMobileDisplay } from "@/lib/jobs";
 import { getNotificationSettings } from "@/lib/notifications/settings-store";
 import { sendMetaTextMessage } from "@/lib/notifications/providers/meta/send-text-message";
+import { sendMetaImageMessage } from "@/lib/notifications/providers/meta/send-image-message";
+import { uploadMetaMedia } from "@/lib/notifications/providers/meta/upload-media";
 import { ACTIVE_JOB_STATUSES } from "@/lib/prisma-statuses";
 
 const MESSAGE_PAGE_SIZE = 50;
@@ -19,6 +21,7 @@ export type InboxThreadMessage = {
   direction: "inbound" | "outbound";
   messageType: string;
   body: string | null;
+  mediaId?: string | null;
   status: string;
   createdAt: string;
   jobCard?: { id: string; jobNumber: string; status?: string } | null;
@@ -159,6 +162,7 @@ export async function getWhatsAppMessages(
         direction: true,
         messageType: true,
         body: true,
+        mediaId: true,
         status: true,
         jobCardId: true,
         createdAt: true,
@@ -177,6 +181,7 @@ export async function getWhatsAppMessages(
     direction: m.direction,
     messageType: m.messageType,
     body: m.body,
+    mediaId: m.mediaId,
     status: m.status,
     createdAt: m.createdAt.toISOString(),
     jobCard: m.jobCard,
@@ -312,6 +317,132 @@ export async function sendWhatsAppReply(params: {
         direction: true,
         messageType: true,
         body: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+  });
+
+  return {
+    ok: true as const,
+    message: {
+      ...message,
+      createdAt: message.createdAt.toISOString(),
+    },
+  };
+}
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+export async function sendWhatsAppImageReply(params: {
+  conversationId: string;
+  file: { buffer: Buffer; mimeType: string; filename: string };
+  caption?: string;
+  staffUserId: string;
+}) {
+  const conversation = await prisma.whatsAppConversation.findUnique({
+    where: { id: params.conversationId },
+    include: {
+      customer: { select: { id: true } },
+    },
+  });
+
+  if (!conversation) {
+    return { ok: false as const, error: "Conversation not found" };
+  }
+
+  const mimeType = params.file.mimeType.toLowerCase();
+  if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
+    return { ok: false as const, error: "Only JPEG, PNG, and WebP images are supported" };
+  }
+
+  if (params.file.buffer.length > MAX_IMAGE_BYTES) {
+    return { ok: false as const, error: "Image must be 5 MB or smaller" };
+  }
+
+  const settings = await getNotificationSettings();
+  if (settings.provider !== "meta") {
+    return {
+      ok: false as const,
+      error: "WhatsApp inbox replies require Meta Cloud API provider",
+    };
+  }
+
+  const upload = await uploadMetaMedia({
+    settings,
+    buffer: params.file.buffer,
+    mimeType,
+    filename: params.file.filename,
+  });
+
+  if (!upload.ok) {
+    return { ok: false as const, error: upload.error };
+  }
+
+  const caption = params.caption?.trim() || undefined;
+
+  const result = await sendMetaImageMessage({
+    settings,
+    to: conversation.customerMobile,
+    mediaId: upload.mediaId,
+    caption,
+  });
+
+  if (!result.success || !result.externalId) {
+    return {
+      ok: false as const,
+      error: result.error ?? result.debug?.staffError ?? "Failed to send image",
+    };
+  }
+
+  const jobCardId = conversation.customerId
+    ? (
+        await prisma.jobCard.findFirst({
+          where: {
+            customerId: conversation.customerId,
+            status: { in: ACTIVE_JOB_STATUSES },
+          },
+          orderBy: { receivedAt: "desc" },
+          select: { id: true },
+        })
+      )?.id ?? null
+    : null;
+
+  const preview = caption ? `📷 ${caption.slice(0, 100)}` : "📷 Photo";
+  const now = new Date();
+
+  const message = await prisma.$transaction(async (tx) => {
+    await tx.whatsAppConversation.update({
+      where: { id: conversation.id },
+      data: {
+        lastMessageAt: now,
+        lastMessagePreview: preview,
+      },
+    });
+
+    return tx.whatsAppMessage.create({
+      data: {
+        conversationId: conversation.id,
+        direction: "outbound",
+        wamid: result.externalId!,
+        messageType: "image",
+        body: caption ?? null,
+        mediaId: upload.mediaId,
+        status: "sent",
+        sentByStaffUserId: params.staffUserId,
+        jobCardId,
+      },
+      select: {
+        id: true,
+        direction: true,
+        messageType: true,
+        body: true,
+        mediaId: true,
         status: true,
         createdAt: true,
       },

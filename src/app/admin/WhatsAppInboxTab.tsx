@@ -21,6 +21,7 @@ type Message = {
   direction: "inbound" | "outbound";
   messageType: string;
   body: string | null;
+  mediaId?: string | null;
   status: string;
   createdAt: string;
   automatedLabel?: string;
@@ -78,6 +79,36 @@ function avatarInitials(name: string | null, mobile: string): string {
   return mobile.slice(-2);
 }
 
+function ChatImage({ mediaId, alt }: { mediaId: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <div className="flex min-h-[120px] min-w-[180px] items-center justify-center rounded-md bg-black/5 px-4 py-6 text-center text-xs text-[#667781]">
+        Photo unavailable
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={`/api/admin/whatsapp/media/${mediaId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block overflow-hidden rounded-md"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/api/admin/whatsapp/media/${mediaId}`}
+        alt={alt}
+        className="max-h-72 max-w-full object-cover"
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </a>
+  );
+}
+
 export function WhatsAppInboxTab({
   onUnreadChange,
 }: {
@@ -91,7 +122,10 @@ export function WhatsAppInboxTab({
   const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadConversations = useCallback(async () => {
     const res = await fetch("/api/admin/whatsapp/conversations");
@@ -151,9 +185,71 @@ export function WhatsAppInboxTab({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread?.messages]);
 
+  useEffect(() => {
+    if (!pendingImage) {
+      setImagePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(pendingImage);
+    setImagePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingImage]);
+
+  function clearPendingImage() {
+    setPendingImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  function handleImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be 5 MB or smaller");
+      return;
+    }
+    setError("");
+    setPendingImage(file);
+  }
+
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedId || !reply.trim()) return;
+    if (!selectedId) return;
+
+    if (pendingImage) {
+      setSending(true);
+      setError("");
+      const form = new FormData();
+      form.append("file", pendingImage);
+      if (reply.trim()) {
+        form.append("caption", reply.trim());
+      }
+
+      const res = await fetch(
+        `/api/admin/whatsapp/conversations/${selectedId}/messages`,
+        { method: "POST", body: form }
+      );
+      const data = await res.json().catch(() => ({}));
+      setSending(false);
+
+      if (!res.ok) {
+        setError(data.error ?? "Failed to send image");
+        return;
+      }
+
+      setReply("");
+      clearPendingImage();
+      await loadThread(selectedId);
+      await loadConversations();
+      return;
+    }
+
+    if (!reply.trim()) return;
 
     setSending(true);
     setError("");
@@ -358,11 +454,29 @@ export function WhatsAppInboxTab({
                             isOutbound
                               ? "rounded-lg rounded-tr-none bg-[#D9FDD3] text-[#111B21]"
                               : "rounded-lg rounded-tl-none bg-white text-[#111B21]"
-                          }`}
+                          } ${m.messageType === "image" && m.mediaId ? "p-1" : ""}`}
                         >
-                          <p className="whitespace-pre-wrap break-words text-[14.2px] leading-[19px]">
-                            {m.body}
-                          </p>
+                          {m.messageType === "image" && m.mediaId ? (
+                            <>
+                              <ChatImage
+                                mediaId={m.mediaId}
+                                alt={m.body?.trim() || "WhatsApp photo"}
+                              />
+                              {m.body?.trim() && (
+                                <p className="px-1.5 pt-1.5 whitespace-pre-wrap break-words text-[14.2px] leading-[19px]">
+                                  {m.body}
+                                </p>
+                              )}
+                            </>
+                          ) : m.messageType === "image" ? (
+                            <p className="whitespace-pre-wrap break-words text-[14.2px] leading-[19px] text-[#667781]">
+                              📷 Photo
+                            </p>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words text-[14.2px] leading-[19px]">
+                              {m.body}
+                            </p>
+                          )}
                           {m.jobCard && (
                             <Link
                               href={`/jobs/${m.jobCard.id}`}
@@ -393,17 +507,61 @@ export function WhatsAppInboxTab({
               onSubmit={handleSend}
               className="flex items-end gap-2 bg-[#F0F2F5] px-3 py-2 md:px-4"
             >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleImagePick}
+              />
               <div className="min-w-0 flex-1">
                 {error && (
                   <p className="mb-1 text-xs text-red-600">{error}</p>
                 )}
-                <div className="flex items-center rounded-3xl bg-white px-4 py-2 shadow-sm">
+                {imagePreview && (
+                  <div className="mb-2 flex items-start gap-2 rounded-lg bg-white p-2 shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imagePreview}
+                      alt="Selected"
+                      className="h-16 w-16 rounded-md object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-[#111B21]">
+                        {pendingImage?.name}
+                      </p>
+                      <p className="text-[10px] text-[#667781]">
+                        Add an optional caption below, then send
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearPendingImage}
+                      className="rounded-full p-1 text-[#667781] hover:bg-slate-100"
+                      aria-label="Remove image"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+                <div className="flex items-center gap-1 rounded-3xl bg-white px-2 py-2 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] hover:bg-[#F0F2F5] disabled:opacity-40"
+                    aria-label="Attach image"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+                      <path d="M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+                    </svg>
+                  </button>
                   <textarea
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     rows={1}
-                    placeholder="Type a message"
-                    className="max-h-24 min-h-[24px] w-full resize-none border-0 bg-transparent text-[15px] text-[#111B21] outline-none placeholder:text-[#667781]"
+                    placeholder={pendingImage ? "Add a caption (optional)" : "Type a message"}
+                    className="max-h-24 min-h-[24px] w-full resize-none border-0 bg-transparent px-1 text-[15px] text-[#111B21] outline-none placeholder:text-[#667781]"
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
@@ -418,7 +576,7 @@ export function WhatsAppInboxTab({
               </div>
               <button
                 type="submit"
-                disabled={sending || !reply.trim()}
+                disabled={sending || (!reply.trim() && !pendingImage)}
                 className="mb-6 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#008069] text-white shadow-md transition-transform hover:bg-[#006652] disabled:opacity-40"
                 aria-label="Send message"
               >

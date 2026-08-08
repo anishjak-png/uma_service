@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireWhatsAppInboxAccess } from "@/lib/auth";
 import {
   getWhatsAppMessages,
+  sendWhatsAppImageReply,
   sendWhatsAppReply,
 } from "@/lib/whatsapp-inbox";
 
@@ -38,6 +39,37 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  const contentType = request.headers.get("content-type") ?? "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const file = form.get("file");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "Image file is required" }, { status: 400 });
+    }
+
+    const caption = form.get("caption");
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const result = await sendWhatsAppImageReply({
+      conversationId: id,
+      file: {
+        buffer,
+        mimeType: file.type || "image/jpeg",
+        filename: file.name || "image.jpg",
+      },
+      caption: typeof caption === "string" ? caption : undefined,
+      staffUserId: session.staffUserId,
+    });
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+
+    return NextResponse.json({ message: result.message });
+  }
+
   const body = (await request.json().catch(() => null)) as { body?: string } | null;
   const text = body?.body?.trim() ?? "";
 

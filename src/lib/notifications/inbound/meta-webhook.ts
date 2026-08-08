@@ -9,7 +9,7 @@ type MetaInboundMessage = {
   timestamp: string;
   type: string;
   text?: { body?: string };
-  image?: { caption?: string };
+  image?: { id?: string; caption?: string; mime_type?: string };
 };
 
 type MetaWebhookBody = {
@@ -55,20 +55,23 @@ export function verifyWebhookSignature(
 function extractMessageBody(msg: MetaInboundMessage): {
   messageType: "text" | "image" | "unsupported";
   body: string;
+  mediaId: string | null;
 } {
   if (msg.type === "text" && msg.text?.body) {
-    return { messageType: "text", body: msg.text.body };
+    return { messageType: "text", body: msg.text.body, mediaId: null };
   }
   if (msg.type === "image") {
     const caption = msg.image?.caption?.trim();
     return {
       messageType: "image",
-      body: caption || "[Image received]",
+      body: caption || "",
+      mediaId: msg.image?.id?.trim() || null,
     };
   }
   return {
     messageType: "unsupported",
     body: `[${msg.type} message]`,
+    mediaId: null,
   };
 }
 
@@ -112,8 +115,13 @@ async function persistInboundMessage(
     ? await findLatestActiveJobId(customer.id)
     : null;
 
-  const { messageType, body } = extractMessageBody(msg);
-  const preview = body.slice(0, 120);
+  const { messageType, body, mediaId } = extractMessageBody(msg);
+  const preview =
+    messageType === "image"
+      ? body
+        ? `📷 ${body.slice(0, 100)}`
+        : "📷 Photo"
+      : body.slice(0, 120);
   const messageAt = new Date(Number.parseInt(msg.timestamp, 10) * 1000);
 
   await prisma.$transaction(async (tx) => {
@@ -140,7 +148,8 @@ async function persistInboundMessage(
         direction: "inbound",
         wamid: msg.id,
         messageType,
-        body,
+        body: body || null,
+        mediaId,
         status: "received",
         jobCardId,
         rawPayload,
