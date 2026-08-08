@@ -79,7 +79,15 @@ function avatarInitials(name: string | null, mobile: string): string {
   return mobile.slice(-2);
 }
 
-function ChatImage({ mediaId, alt }: { mediaId: string; alt: string }) {
+function ChatImage({
+  mediaId,
+  alt,
+  onOpen,
+}: {
+  mediaId: string;
+  alt: string;
+  onOpen: () => void;
+}) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
@@ -91,21 +99,91 @@ function ChatImage({ mediaId, alt }: { mediaId: string; alt: string }) {
   }
 
   return (
-    <a
-      href={`/api/admin/whatsapp/media/${mediaId}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="block overflow-hidden rounded-md"
+    <button
+      type="button"
+      onClick={onOpen}
+      className="block overflow-hidden rounded-md text-left"
+      aria-label="View photo"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={`/api/admin/whatsapp/media/${mediaId}`}
         alt={alt}
-        className="max-h-72 max-w-full object-cover"
+        className="max-h-72 max-w-full cursor-pointer object-cover"
         loading="lazy"
         onError={() => setFailed(true)}
       />
-    </a>
+    </button>
+  );
+}
+
+function ImageLightbox({
+  mediaId,
+  alt,
+  onClose,
+}: {
+  mediaId: string;
+  alt: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex flex-col bg-black/95"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Photo viewer"
+    >
+      <div className="flex shrink-0 items-center gap-2 bg-black/50 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex items-center gap-1 rounded-full px-3 py-2 text-white hover:bg-white/10"
+          aria-label="Close photo"
+        >
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+          </svg>
+          <span className="text-sm font-medium md:hidden">Back</span>
+        </button>
+        <span className="min-w-0 flex-1 truncate text-sm text-white/80">{alt}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full p-2 text-white hover:bg-white/10"
+          aria-label="Close"
+        >
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="flex min-h-0 flex-1 items-center justify-center p-4"
+        aria-label="Close photo"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/api/admin/whatsapp/media/${mediaId}`}
+          alt={alt}
+          className="max-h-full max-w-full object-contain"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </button>
+    </div>
   );
 }
 
@@ -124,6 +202,9 @@ export function WhatsAppInboxTab({
   const [error, setError] = useState("");
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ mediaId: string; alt: string } | null>(
+    null
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -461,6 +542,12 @@ export function WhatsAppInboxTab({
                               <ChatImage
                                 mediaId={m.mediaId}
                                 alt={m.body?.trim() || "WhatsApp photo"}
+                                onOpen={() =>
+                                  setLightbox({
+                                    mediaId: m.mediaId!,
+                                    alt: m.body?.trim() || "WhatsApp photo",
+                                  })
+                                }
                               />
                               {m.body?.trim() && (
                                 <p className="px-1.5 pt-1.5 whitespace-pre-wrap break-words text-[14.2px] leading-[19px]">
@@ -592,6 +679,13 @@ export function WhatsAppInboxTab({
           </>
         )}
       </div>
+      {lightbox && (
+        <ImageLightbox
+          mediaId={lightbox.mediaId}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }
