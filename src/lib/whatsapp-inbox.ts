@@ -1,10 +1,90 @@
 import { prisma } from "@/lib/db";
+import type { NotificationEventType } from "@prisma/client";
 import { formatMobileDisplay } from "@/lib/jobs";
 import { getNotificationSettings } from "@/lib/notifications/settings-store";
 import { sendMetaTextMessage } from "@/lib/notifications/providers/meta/send-text-message";
 import { ACTIVE_JOB_STATUSES } from "@/lib/prisma-statuses";
 
 const MESSAGE_PAGE_SIZE = 50;
+
+const AUTOMATED_EVENT_LABELS: Record<NotificationEventType, string> = {
+  JOB_CREATED: "Job created",
+  JOB_READY: "Ready for delivery",
+  JOB_RETURN: "Return",
+};
+
+export type InboxThreadMessage = {
+  id: string;
+  source: "chat" | "automated";
+  direction: "inbound" | "outbound";
+  messageType: string;
+  body: string | null;
+  status: string;
+  createdAt: string;
+  jobCard?: { id: string; jobNumber: string; status?: string } | null;
+  automatedLabel?: string;
+};
+
+function stripMetaDebugFromLogBody(messageBody: string | null): string {
+  if (!messageBody) return "";
+  const debugIdx = messageBody.indexOf("\n\n[Meta API Debug]");
+  return debugIdx >= 0 ? messageBody.slice(0, debugIdx).trim() : messageBody.trim();
+}
+
+function formatAutomatedLogPreview(
+  eventType: NotificationEventType,
+  messageBody: string | null
+): string {
+  const raw = stripMetaDebugFromLogBody(messageBody);
+  if (!raw) return AUTOMATED_EVENT_LABELS[eventType];
+
+  const withoutTemplatePrefix = raw.replace(/^\[[^\]]+\]\s*/, "");
+  return withoutTemplatePrefix || AUTOMATED_EVENT_LABELS[eventType];
+}
+
+async function fetchAutomatedMessagesForMobile(
+  customerMobile: string
+): Promise<InboxThreadMessage[]> {
+  const logs = await prisma.notificationLog.findMany({
+    where: {
+      channel: "WHATSAPP",
+      status: "Sent",
+      OR: [
+        { recipient: customerMobile },
+        { jobCard: { customer: { mobile: customerMobile } } },
+      ],
+    },
+    include: {
+      jobCard: {
+        select: { id: true, jobNumber: true, status: true },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 200,
+  });
+
+  return logs.map((log) => ({
+    id: `automated-${log.id}`,
+    source: "automated" as const,
+    direction: "outbound" as const,
+    messageType: "text",
+    body: formatAutomatedLogPreview(log.eventType, log.messageBody),
+    status: log.status,
+    createdAt: log.createdAt.toISOString(),
+    jobCard: log.jobCard,
+    automatedLabel: AUTOMATED_EVENT_LABELS[log.eventType],
+  }));
+}
+
+function mergeThreadMessages(
+  chatMessages: InboxThreadMessage[],
+  automatedMessages: InboxThreadMessage[]
+): InboxThreadMessage[] {
+  return [...chatMessages, ...automatedMessages].sort(
+    (a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
 
 export async function listWhatsAppConversations() {
   const rows = await prisma.whatsAppConversation.findMany({
@@ -68,7 +148,7 @@ export async function getWhatsAppMessages(
 
   const skip = (Math.max(1, page) - 1) * MESSAGE_PAGE_SIZE;
 
-  const [messages, total] = await Promise.all([
+  const [chatRows, chatTotal, automatedMessages] = await Promise.all([
     prisma.whatsAppMessage.findMany({
       where: { conversationId },
       orderBy: { createdAt: "asc" },
@@ -83,12 +163,29 @@ export async function getWhatsAppMessages(
         jobCardId: true,
         createdAt: true,
         jobCard: {
-          select: { id: true, jobNumber: true },
+          select: { id: true, jobNumber: true, status: true },
         },
       },
     }),
     prisma.whatsAppMessage.count({ where: { conversationId } }),
+    fetchAutomatedMessagesForMobile(conversation.customerMobile),
   ]);
+
+  const chatMessages: InboxThreadMessage[] = chatRows.map((m) => ({
+    id: m.id,
+    source: "chat",
+    direction: m.direction,
+    messageType: m.messageType,
+    body: m.body,
+    status: m.status,
+    createdAt: m.createdAt.toISOString(),
+    jobCard: m.jobCard,
+  }));
+
+  const messages =
+    page === 1
+      ? mergeThreadMessages(chatMessages, automatedMessages)
+      : chatMessages;
 
   let latestJob: {
     id: string;
@@ -117,13 +214,10 @@ export async function getWhatsAppMessages(
       unreadCount: conversation.unreadCount,
       latestJob,
     },
-    messages: messages.map((m) => ({
-      ...m,
-      createdAt: m.createdAt.toISOString(),
-    })),
+    messages,
     page,
-    totalPages: Math.max(1, Math.ceil(total / MESSAGE_PAGE_SIZE)),
-    total,
+    totalPages: Math.max(1, Math.ceil(chatTotal / MESSAGE_PAGE_SIZE)),
+    total: chatTotal + (page === 1 ? automatedMessages.length : 0),
   };
 }
 
