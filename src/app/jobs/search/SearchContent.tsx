@@ -28,6 +28,8 @@ type JobResult = {
   readyAt?: string | null;
   deliveredAt?: string | null;
   serviceAmount?: number | null;
+  deliveryContactStatus?: "not_contacted" | "contacted";
+  expectedDeliveryAt?: string | null;
   customer: { mobile: string; name?: string | null };
   assignedTechnician?: { name: string } | null;
   outsourcedTo?: { id: string; name: string } | null;
@@ -476,6 +478,9 @@ export default function SearchContent() {
   }
 
   function searchCardProps(job: JobResult) {
+    const pickupStatus = job.status === "Ready" || job.status === "Return";
+    const canLogCall =
+      pickupStatus && (role === "reception" || role === "admin");
     return {
       id: job.id,
       jobNumber: job.jobNumber,
@@ -488,6 +493,11 @@ export default function SearchContent() {
       showServiceAmount: showAmounts,
       emphasis: warrantyEmphasis(job),
       meta: buildSearchMeta(job),
+      deliveryContactStatus: pickupStatus
+        ? (job.deliveryContactStatus ?? "not_contacted")
+        : undefined,
+      expectedDeliveryAt: job.expectedDeliveryAt,
+      enableDeliveryCallLog: canLogCall,
       ...assigneeProps(job),
     };
   }

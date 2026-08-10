@@ -36,6 +36,8 @@ const readyPickupSelect = {
   applianceType: true,
   readyAt: true,
   serviceAmount: true,
+  deliveryContactStatus: true,
+  expectedDeliveryAt: true,
   customer: { select: { name: true, mobile: true } },
   completedByTechnician: { select: { name: true } },
   completedByOutsource: { select: { name: true } },
@@ -46,11 +48,11 @@ function jobNumberSortKey(jobNumber: string): number {
   return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
 }
 
-/** Oldest UT number first (numeric), then cap the home list. */
-function readyForPickupList<T extends { jobNumber: string }>(jobs: T[], limit = 20): T[] {
-  return [...jobs]
-    .sort((a, b) => jobNumberSortKey(a.jobNumber) - jobNumberSortKey(b.jobNumber))
-    .slice(0, limit);
+/** Oldest UT number first (numeric). */
+function sortReadyForPickup<T extends { jobNumber: string }>(jobs: T[]): T[] {
+  return [...jobs].sort(
+    (a, b) => jobNumberSortKey(a.jobNumber) - jobNumberSortKey(b.jobNumber)
+  );
 }
 
 export async function getReceptionDashboardData() {
@@ -75,7 +77,11 @@ export async function getReceptionDashboardData() {
   return {
     todayJobs,
     ...counts,
-    readyForPickup: readyForPickupList(readyRows),
+    readyForPickup: sortReadyForPickup(readyRows).map((j) => ({
+      ...j,
+      readyAt: j.readyAt?.toISOString() ?? null,
+      expectedDeliveryAt: j.expectedDeliveryAt?.toISOString() ?? null,
+    })),
   };
 }
 
@@ -121,6 +127,10 @@ export async function getAdminDashboardData() {
     todayCollection: todayCollection._sum.serviceAmount ?? 0,
     monthlyCollection: monthlyCollection._sum.serviceAmount ?? 0,
     pendingCollection: readyCollection._sum.serviceAmount ?? 0,
-    readyForPickup: readyForPickupList(readyRows),
+    readyForPickup: sortReadyForPickup(readyRows).map((j) => ({
+      ...j,
+      readyAt: j.readyAt?.toISOString() ?? null,
+      expectedDeliveryAt: j.expectedDeliveryAt?.toISOString() ?? null,
+    })),
   };
 }

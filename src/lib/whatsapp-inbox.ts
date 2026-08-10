@@ -9,6 +9,76 @@ import { ACTIVE_JOB_STATUSES } from "@/lib/prisma-statuses";
 
 const MESSAGE_PAGE_SIZE = 50;
 
+const CHAT_MESSAGE_SELECT = {
+  id: true,
+  direction: true,
+  messageType: true,
+  body: true,
+  mediaId: true,
+  wamid: true,
+  reactedToWamid: true,
+  status: true,
+  jobCardId: true,
+  createdAt: true,
+  jobCard: {
+    select: { id: true, jobNumber: true, status: true },
+  },
+} as const;
+
+const CHAT_MESSAGE_SELECT_LEGACY = {
+  id: true,
+  direction: true,
+  messageType: true,
+  body: true,
+  mediaId: true,
+  wamid: true,
+  status: true,
+  jobCardId: true,
+  createdAt: true,
+  jobCard: {
+    select: { id: true, jobNumber: true, status: true },
+  },
+} as const;
+
+function isSchemaDriftError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes("reactedtowamid") ||
+    msg.includes("unknown field") ||
+    msg.includes("column") ||
+    msg.includes("does not exist") ||
+    msg.includes("deliverycontactstatus") ||
+    msg.includes("expecteddeliveryat")
+  );
+}
+
+async function fetchChatMessages(
+  conversationId: string,
+  skip: number,
+  take: number
+) {
+  try {
+    return await prisma.whatsAppMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "asc" },
+      skip,
+      take,
+      select: CHAT_MESSAGE_SELECT,
+    });
+  } catch (err) {
+    if (!isSchemaDriftError(err)) throw err;
+    console.warn("[WhatsApp Inbox] Using legacy message query — run prisma db push");
+    return prisma.whatsAppMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "asc" },
+      skip,
+      take,
+      select: CHAT_MESSAGE_SELECT_LEGACY,
+    });
+  }
+}
+
 const AUTOMATED_EVENT_LABELS: Record<NotificationEventType, string> = {
   JOB_CREATED: "Job created",
   JOB_READY: "Ready for delivery",
@@ -22,6 +92,8 @@ export type InboxThreadMessage = {
   messageType: string;
   body: string | null;
   mediaId?: string | null;
+  wamid?: string | null;
+  reactedToWamid?: string | null;
   status: string;
   createdAt: string;
   jobCard?: { id: string; jobNumber: string; status?: string } | null;
@@ -72,6 +144,7 @@ async function fetchAutomatedMessagesForMobile(
     direction: "outbound" as const,
     messageType: "text",
     body: formatAutomatedLogPreview(log.eventType, log.messageBody),
+    wamid: log.externalId,
     status: log.status,
     createdAt: log.createdAt.toISOString(),
     jobCard: log.jobCard,
@@ -152,25 +225,7 @@ export async function getWhatsAppMessages(
   const skip = (Math.max(1, page) - 1) * MESSAGE_PAGE_SIZE;
 
   const [chatRows, chatTotal, automatedMessages] = await Promise.all([
-    prisma.whatsAppMessage.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: "asc" },
-      skip,
-      take: MESSAGE_PAGE_SIZE,
-      select: {
-        id: true,
-        direction: true,
-        messageType: true,
-        body: true,
-        mediaId: true,
-        status: true,
-        jobCardId: true,
-        createdAt: true,
-        jobCard: {
-          select: { id: true, jobNumber: true, status: true },
-        },
-      },
-    }),
+    fetchChatMessages(conversationId, skip, MESSAGE_PAGE_SIZE),
     prisma.whatsAppMessage.count({ where: { conversationId } }),
     fetchAutomatedMessagesForMobile(conversation.customerMobile),
   ]);
@@ -182,6 +237,9 @@ export async function getWhatsAppMessages(
     messageType: m.messageType,
     body: m.body,
     mediaId: m.mediaId,
+    wamid: m.wamid,
+    reactedToWamid:
+      "reactedToWamid" in m ? (m.reactedToWamid as string | null) : null,
     status: m.status,
     createdAt: m.createdAt.toISOString(),
     jobCard: m.jobCard,

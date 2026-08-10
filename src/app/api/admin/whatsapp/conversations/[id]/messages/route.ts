@@ -9,23 +9,30 @@ import {
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const session = await requireWhatsAppInboxAccess();
-  if (!session) {
-    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  try {
+    const session = await requireWhatsAppInboxAccess();
+    if (!session) {
+      return NextResponse.json({ error: "Admin only" }, { status: 403 });
+    }
+
+    const { id } = await context.params;
+    const page = Math.max(
+      1,
+      Number.parseInt(request.nextUrl.searchParams.get("page") ?? "1", 10) || 1
+    );
+
+    const data = await getWhatsAppMessages(id, page);
+    if (!data) {
+      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error("[WhatsApp] GET messages failed:", err);
+    const message =
+      err instanceof Error ? err.message : "Failed to load messages";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const { id } = await context.params;
-  const page = Math.max(
-    1,
-    Number.parseInt(request.nextUrl.searchParams.get("page") ?? "1", 10) || 1
-  );
-
-  const data = await getWhatsAppMessages(id, page);
-  if (!data) {
-    return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-  }
-
-  return NextResponse.json(data);
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {

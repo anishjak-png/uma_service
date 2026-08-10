@@ -10,6 +10,7 @@ type MetaInboundMessage = {
   type: string;
   text?: { body?: string };
   image?: { id?: string; caption?: string; mime_type?: string };
+  reaction?: { message_id?: string; emoji?: string };
 };
 
 type MetaWebhookBody = {
@@ -53,12 +54,18 @@ export function verifyWebhookSignature(
 }
 
 function extractMessageBody(msg: MetaInboundMessage): {
-  messageType: "text" | "image" | "unsupported";
+  messageType: "text" | "image" | "reaction" | "unsupported";
   body: string;
   mediaId: string | null;
+  reactedToWamid: string | null;
 } {
   if (msg.type === "text" && msg.text?.body) {
-    return { messageType: "text", body: msg.text.body, mediaId: null };
+    return {
+      messageType: "text",
+      body: msg.text.body,
+      mediaId: null,
+      reactedToWamid: null,
+    };
   }
   if (msg.type === "image") {
     const caption = msg.image?.caption?.trim();
@@ -66,12 +73,32 @@ function extractMessageBody(msg: MetaInboundMessage): {
       messageType: "image",
       body: caption || "",
       mediaId: msg.image?.id?.trim() || null,
+      reactedToWamid: null,
+    };
+  }
+  if (msg.type === "reaction" && msg.reaction) {
+    const emoji = msg.reaction.emoji?.trim() ?? "";
+    const reactedToWamid = msg.reaction.message_id?.trim() || null;
+    if (!emoji) {
+      return {
+        messageType: "reaction",
+        body: "",
+        mediaId: null,
+        reactedToWamid,
+      };
+    }
+    return {
+      messageType: "reaction",
+      body: emoji,
+      mediaId: null,
+      reactedToWamid,
     };
   }
   return {
     messageType: "unsupported",
     body: `[${msg.type} message]`,
     mediaId: null,
+    reactedToWamid: null,
   };
 }
 
@@ -115,14 +142,41 @@ async function persistInboundMessage(
     ? await findLatestActiveJobId(customer.id)
     : null;
 
-  const { messageType, body, mediaId } = extractMessageBody(msg);
+  const { messageType, body, mediaId, reactedToWamid } = extractMessageBody(msg);
+
+  if (messageType === "reaction" && !body) {
+    if (reactedToWamid) {
+      await prisma.whatsAppMessage.deleteMany({
+        where: {
+          reactedToWamid,
+          messageType: "reaction",
+          conversation: { customerMobile: mobile },
+        },
+      });
+    }
+    return;
+  }
+
   const preview =
-    messageType === "image"
-      ? body
-        ? `📷 ${body.slice(0, 100)}`
-        : "📷 Photo"
-      : body.slice(0, 120);
+    messageType === "reaction"
+      ? `${body} Reaction`
+      : messageType === "image"
+        ? body
+          ? `📷 ${body.slice(0, 100)}`
+          : "📷 Photo"
+        : body.slice(0, 120);
   const messageAt = new Date(Number.parseInt(msg.timestamp, 10) * 1000);
+
+  if (messageType === "reaction" && reactedToWamid) {
+    await prisma.whatsAppMessage.deleteMany({
+      where: {
+        reactedToWamid,
+        messageType: "reaction",
+        direction: "inbound",
+        conversation: { customerMobile: mobile },
+      },
+    });
+  }
 
   await prisma.$transaction(async (tx) => {
     const conversation = await tx.whatsAppConversation.upsert({
@@ -150,6 +204,7 @@ async function persistInboundMessage(
         messageType,
         body: body || null,
         mediaId,
+        reactedToWamid,
         status: "received",
         jobCardId,
         rawPayload,

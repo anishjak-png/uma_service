@@ -22,6 +22,8 @@ type AdminDashboardProps = {
       applianceType: string;
       readyAt?: string | Date | null;
       serviceAmount?: number | null;
+      deliveryContactStatus: "not_contacted" | "contacted";
+      expectedDeliveryAt?: string | Date | null;
       customer: { name?: string | null; mobile: string };
       completedByTechnician?: { name: string } | null;
       completedByOutsource?: { name: string } | null;
@@ -113,12 +115,7 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
         </div>
       </section>
 
-      <section>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Ready for Delivery
-        </p>
-        <ReadyPickupList jobs={data.readyForPickup} />
-      </section>
+      <ReadyPickupList jobs={data.readyForPickup} />
 
       <Link
         href="/admin?tab=whatsapp"

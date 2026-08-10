@@ -31,6 +31,11 @@ enum JobStatus {
   Delivered
 }
 
+enum DeliveryContactStatus {
+  not_contacted
+  contacted
+}
+
 model LookupOption {
   id       String @id @default(cuid())
   category String
@@ -168,6 +173,8 @@ model JobCard {
   receivedAt                   DateTime        @default(now())
   readyAt              DateTime?
   deliveredAt          DateTime?
+  deliveryContactStatus DeliveryContactStatus @default(not_contacted)
+  expectedDeliveryAt   DateTime?
   createdBy            String?
   assignedTechnicianId     String?
   assignedTechnician       Technician?     @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
@@ -321,6 +328,7 @@ enum WhatsAppMessageDirection {
 enum WhatsAppMessageType {
   text
   image
+  reaction
   unsupported
 }
 
@@ -354,6 +362,7 @@ model WhatsAppMessage {
   messageType        WhatsAppMessageType
   body               String?
   mediaId            String?
+  reactedToWamid     String?
   status             WhatsAppMessageStatus
   sentByStaffUserId  String?
   jobCardId          String?

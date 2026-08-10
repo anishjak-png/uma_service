@@ -245,6 +245,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
         data.status = "Ready";
         statusChange = "Ready";
+        data.deliveryContactStatus = "not_contacted";
+        data.expectedDeliveryAt = null;
         if (!statusNote) statusNote = body.note ?? undefined;
       } else if (newStatus === "Return") {
         data.serviceAmount = 0;

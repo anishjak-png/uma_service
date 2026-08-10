@@ -17,6 +17,8 @@ type ReceptionDashboardProps = {
       applianceType: string;
       readyAt?: string | Date | null;
       serviceAmount?: number | null;
+      deliveryContactStatus: "not_contacted" | "contacted";
+      expectedDeliveryAt?: string | Date | null;
       customer: { name?: string | null; mobile: string };
       completedByTechnician?: { name: string } | null;
       completedByOutsource?: { name: string } | null;
@@ -34,12 +36,7 @@ export function ReceptionDashboard({ data }: ReceptionDashboardProps) {
         New Job
       </Link>
 
-      <section>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Ready for Delivery
-        </p>
-        <ReadyPickupList jobs={data.readyForPickup} />
-      </section>
+      <ReadyPickupList jobs={data.readyForPickup} />
 
       <section>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">

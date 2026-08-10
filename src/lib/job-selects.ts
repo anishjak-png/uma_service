@@ -12,6 +12,8 @@ const jobListSelectBase = {
   readyAt: true,
   deliveredAt: true,
   serviceAmount: true,
+  deliveryContactStatus: true,
+  expectedDeliveryAt: true,
   customer: { select: { id: true, mobile: true, name: true } },
   assignedTechnician: { select: { name: true } },
   outsourcedTo: { select: { id: true, name: true } },

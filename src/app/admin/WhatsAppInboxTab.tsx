@@ -2,7 +2,7 @@
 
 import { formatDateTime } from "@/lib/jobs";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Conversation = {
   id: string;
@@ -22,6 +22,8 @@ type Message = {
   messageType: string;
   body: string | null;
   mediaId?: string | null;
+  wamid?: string | null;
+  reactedToWamid?: string | null;
   status: string;
   createdAt: string;
   automatedLabel?: string;
@@ -32,6 +34,46 @@ type ThreadData = {
   conversation: Conversation & { unreadCount: number };
   messages: Message[];
 };
+
+function ReactionStrip({ emojis }: { emojis: string[] }) {
+  if (emojis.length === 0) return null;
+  return (
+    <div className="-mt-2 flex px-1">
+      <span className="inline-flex items-center rounded-full border border-[#E9EDEF] bg-white px-2 py-0.5 text-base shadow-sm">
+        {emojis.join("")}
+      </span>
+    </div>
+  );
+}
+
+function partitionThreadMessages(messages: Message[]) {
+  const wamids = new Set(
+    messages.map((m) => m.wamid).filter((id): id is string => Boolean(id))
+  );
+  const reactionsByWamid = new Map<string, string[]>();
+  const orphanReactions: Message[] = [];
+  const visibleMessages: Message[] = [];
+
+  for (const m of messages) {
+    if (m.messageType === "reaction" && m.body) {
+      if (m.reactedToWamid && wamids.has(m.reactedToWamid)) {
+        const list = reactionsByWamid.get(m.reactedToWamid) ?? [];
+        list.push(m.body);
+        reactionsByWamid.set(m.reactedToWamid, list);
+      } else {
+        orphanReactions.push(m);
+      }
+      continue;
+    }
+    if (m.messageType === "unsupported" && m.body === "[reaction message]") {
+      orphanReactions.push({ ...m, body: "Reaction" });
+      continue;
+    }
+    visibleMessages.push(m);
+  }
+
+  return { visibleMessages, reactionsByWamid, orphanReactions };
+}
 
 function chatTime(iso: string): string {
   const date = new Date(iso);
@@ -225,7 +267,12 @@ export function WhatsAppInboxTab({
         `/api/admin/whatsapp/conversations/${conversationId}/messages`
       );
       if (!res.ok) {
-        setError("Failed to load messages");
+        const data = await res.json().catch(() => ({}));
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : "Failed to load messages"
+        );
         setLoadingThread(false);
         return;
       }
@@ -358,6 +405,11 @@ export function WhatsAppInboxTab({
   const active = thread?.conversation;
   const displayName = active?.customerName ?? active?.mobileDisplay ?? "";
   const showChatOnMobile = Boolean(selectedId);
+
+  const threadParts = useMemo(
+    () => partitionThreadMessages(thread?.messages ?? []),
+    [thread?.messages]
+  );
 
   return (
     <div className="flex h-[calc(100dvh-8.5rem)] min-h-[420px] overflow-hidden rounded-lg border border-slate-200 bg-[#D1D7DB] shadow-sm md:h-[calc(100dvh-7rem)]">
@@ -494,33 +546,43 @@ export function WhatsAppInboxTab({
                 <p className="text-center text-sm text-[#667781]">Loading messages…</p>
               ) : (
                 <div className="space-y-1">
-                  {thread?.messages.map((m) => {
+                  {threadParts.visibleMessages.map((m) => {
                     const isOutbound = m.direction === "outbound";
                     const isAutomated = m.source === "automated";
+                    const reactions = m.wamid
+                      ? threadParts.reactionsByWamid.get(m.wamid) ?? []
+                      : [];
 
                     if (isAutomated) {
                       return (
-                        <div key={m.id} className="flex justify-center py-1">
-                          <div className="max-w-[92%] rounded-lg border border-[#D1D7DB] bg-[#FFF8E1] px-3 py-2 shadow-sm">
-                            <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-[#856404]">
-                              Automated · {m.automatedLabel}
-                            </p>
-                            {m.jobCard && (
-                              <Link
-                                href={`/jobs/${m.jobCard.id}`}
-                                className="mt-1 block text-center text-xs font-semibold text-[#008069] hover:underline"
-                              >
-                                {m.jobCard.jobNumber}
-                                {m.jobCard.status ? ` · ${m.jobCard.status}` : ""}
-                              </Link>
-                            )}
-                            <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[#111B21]">
-                              {m.body}
-                            </p>
-                            <p className="mt-1 text-right text-[10px] text-[#667781]">
-                              {chatTime(m.createdAt)}
-                            </p>
+                        <div key={m.id} className="flex flex-col py-1">
+                          <div className="flex justify-center">
+                            <div className="max-w-[92%] rounded-lg border border-[#D1D7DB] bg-[#FFF8E1] px-3 py-2 shadow-sm">
+                              <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-[#856404]">
+                                Automated · {m.automatedLabel}
+                              </p>
+                              {m.jobCard && (
+                                <Link
+                                  href={`/jobs/${m.jobCard.id}`}
+                                  className="mt-1 block text-center text-xs font-semibold text-[#008069] hover:underline"
+                                >
+                                  {m.jobCard.jobNumber}
+                                  {m.jobCard.status ? ` · ${m.jobCard.status}` : ""}
+                                </Link>
+                              )}
+                              <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[#111B21]">
+                                {m.body}
+                              </p>
+                              <p className="mt-1 text-right text-[10px] text-[#667781]">
+                                {chatTime(m.createdAt)}
+                              </p>
+                            </div>
                           </div>
+                          {reactions.length > 0 && (
+                            <div className="flex justify-center">
+                              <ReactionStrip emojis={reactions} />
+                            </div>
+                          )}
                         </div>
                       );
                     }
@@ -528,7 +590,7 @@ export function WhatsAppInboxTab({
                     return (
                       <div
                         key={m.id}
-                        className={`flex py-0.5 ${isOutbound ? "justify-end" : "justify-start"}`}
+                        className={`flex flex-col py-0.5 ${isOutbound ? "items-end" : "items-start"}`}
                       >
                         <div
                           className={`relative max-w-[82%] px-2.5 py-1.5 shadow-sm ${
@@ -581,9 +643,17 @@ export function WhatsAppInboxTab({
                             )}
                           </p>
                         </div>
+                        {reactions.length > 0 && <ReactionStrip emojis={reactions} />}
                       </div>
                     );
                   })}
+                  {threadParts.orphanReactions.map((m) => (
+                    <div key={m.id} className="flex justify-center py-0.5">
+                      <div className="rounded-full border border-[#E9EDEF] bg-white px-3 py-1 text-sm shadow-sm">
+                        {m.body} · {chatTime(m.createdAt)}
+                      </div>
+                    </div>
+                  ))}
                   <div ref={messagesEndRef} />
                 </div>
               )}

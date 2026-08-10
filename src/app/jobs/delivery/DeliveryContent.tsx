@@ -3,6 +3,7 @@
 import { AppShell } from "@/components/AppShell";
 import { JobListCard } from "@/components/JobListCard";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
+import type { DeliveryContactStatus } from "@prisma/client";
 import { formatDoneDatestamp } from "@/lib/jobs";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -15,6 +16,8 @@ type DeliveryJob = {
   brand?: string | null;
   readyAt?: string | null;
   serviceAmount?: number | null;
+  deliveryContactStatus?: DeliveryContactStatus;
+  expectedDeliveryAt?: string | null;
   customer: { mobile: string; name?: string | null };
 };
 
@@ -66,6 +69,26 @@ export default function DeliveryContent() {
   function handleSearch(e: FormEvent) {
     e.preventDefault();
     loadJobs(query);
+  }
+
+  function handleCallLogged(
+    jobId: string,
+    result: {
+      deliveryContactStatus: DeliveryContactStatus;
+      expectedDeliveryAt: string | null;
+    }
+  ) {
+    setResults((prev) =>
+      prev.map((j) =>
+        j.id === jobId
+          ? {
+              ...j,
+              deliveryContactStatus: result.deliveryContactStatus,
+              expectedDeliveryAt: result.expectedDeliveryAt,
+            }
+          : j
+      )
+    );
   }
 
   async function markDelivered(job: DeliveryJob) {
@@ -141,6 +164,12 @@ export default function DeliveryContent() {
                 applianceLine={appliance}
                 serviceAmount={job.serviceAmount}
                 meta={doneLabel ?? undefined}
+                deliveryContactStatus={
+                  job.deliveryContactStatus ?? "not_contacted"
+                }
+                expectedDeliveryAt={job.expectedDeliveryAt}
+                enableDeliveryCallLog
+                onDeliveryCallLogged={(result) => handleCallLogged(job.id, result)}
                 badge={<JobStatusBadge status={job.status} />}
                 footer={
                   <button

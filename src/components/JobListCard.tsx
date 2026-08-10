@@ -1,6 +1,13 @@
+import type { DeliveryContactStatus } from "@prisma/client";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
+import { DeliveryCallButton } from "@/components/DeliveryCallButton";
+import { DeliveryContactBadge } from "@/components/DeliveryContactBadge";
 import { formatCurrency } from "@/lib/currency";
+import {
+  formatExpectedDeliveryDate,
+  shouldShowDeliveryContact,
+} from "@/lib/delivery-contact";
 import { formatMobileDisplay } from "@/lib/jobs";
 import { shouldShowJobServiceAmount } from "@/lib/job-assignee-display";
 import Link from "next/link";
@@ -14,7 +21,6 @@ export type JobListCardProps = {
   mobile: string;
   applianceLine: string;
   complaint?: string;
-  /** Bold location/status line (e.g. warranty at store / with company). */
   emphasis?: string;
   assigneeName?: string | null;
   showAssignee?: boolean;
@@ -22,6 +28,13 @@ export type JobListCardProps = {
   serviceAmount?: number | null;
   showServiceAmount?: boolean;
   showCallIcon?: boolean;
+  deliveryContactStatus?: DeliveryContactStatus;
+  expectedDeliveryAt?: string | Date | null;
+  enableDeliveryCallLog?: boolean;
+  onDeliveryCallLogged?: (result: {
+    deliveryContactStatus: DeliveryContactStatus;
+    expectedDeliveryAt: string | null;
+  }) => void;
   badge?: ReactNode;
   footer?: ReactNode;
 };
@@ -41,10 +54,15 @@ export function JobListCard({
   serviceAmount,
   showServiceAmount = true,
   showCallIcon = true,
+  deliveryContactStatus,
+  expectedDeliveryAt,
+  enableDeliveryCallLog = false,
+  onDeliveryCallLogged,
   badge,
   footer,
 }: JobListCardProps) {
   const displayName = customerName ?? formatMobileDisplay(mobile);
+  const showContact = shouldShowDeliveryContact(status) && deliveryContactStatus;
 
   const assigneeText =
     showAssignee && assigneeName ? (
@@ -53,12 +71,42 @@ export function JobListCard({
       <span className="text-slate-400">Unassigned</span>
     ) : null;
 
+  const expectedLabel =
+    deliveryContactStatus === "contacted"
+      ? formatExpectedDeliveryDate(expectedDeliveryAt)
+      : null;
+
+  const metaParts: ReactNode[] = [];
+  if (assigneeText) metaParts.push(assigneeText);
+  if (meta) metaParts.push(meta);
+  if (expectedLabel) {
+    metaParts.push(
+      <span key="expected" className="font-medium text-sky-700">
+        Expected: {expectedLabel}
+      </span>
+    );
+  }
+
   const detailLine = [applianceLine, complaint, emphasis].filter(Boolean).join(" · ");
   const displayAmount = shouldShowJobServiceAmount(
     status,
     serviceAmount,
     showServiceAmount
   );
+
+  const callControl =
+    showCallIcon &&
+    (enableDeliveryCallLog ? (
+      <DeliveryCallButton
+        jobId={id}
+        jobNumber={jobNumber}
+        customerName={customerName}
+        mobile={mobile}
+        onLogged={onDeliveryCallLogged}
+      />
+    ) : (
+      <CallCustomerButton mobile={mobile} />
+    ));
 
   return (
     <div className="rounded-md border border-slate-200 bg-white shadow-sm transition-colors hover:bg-slate-50">
@@ -77,14 +125,14 @@ export function JobListCard({
               {detailLine}
             </p>
           )}
-          {(assigneeText || meta) && (
-            <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed">
-              {assigneeText}
-              {assigneeText && meta ? (
-                <span className="text-slate-500"> · {meta}</span>
-              ) : meta ? (
-                <span className="text-slate-500">{meta}</span>
-              ) : null}
+          {metaParts.length > 0 && (
+            <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">
+              {metaParts.map((part, i) => (
+                <span key={i}>
+                  {i > 0 ? " · " : ""}
+                  {part}
+                </span>
+              ))}
             </p>
           )}
           {displayAmount && (
@@ -94,8 +142,13 @@ export function JobListCard({
           )}
         </Link>
         <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
-          {badge ?? <JobStatusBadge status={status} />}
-          {showCallIcon && <CallCustomerButton mobile={mobile} />}
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            {badge ?? <JobStatusBadge status={status} />}
+            {showContact && (
+              <DeliveryContactBadge status={deliveryContactStatus} />
+            )}
+          </div>
+          {callControl}
         </div>
       </div>
       {footer && (
