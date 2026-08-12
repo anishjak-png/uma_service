@@ -25,7 +25,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.role !== "reception" && session.role !== "admin") {
+  if (
+    session.role !== "reception" &&
+    session.role !== "admin" &&
+    session.role !== "technician"
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

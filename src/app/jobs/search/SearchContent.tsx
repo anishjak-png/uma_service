@@ -480,7 +480,8 @@ export default function SearchContent() {
   function searchCardProps(job: JobResult) {
     const pickupStatus = job.status === "Ready" || job.status === "Return";
     const canLogCall =
-      pickupStatus && (role === "reception" || role === "admin");
+      pickupStatus &&
+      (role === "reception" || role === "admin" || role === "technician");
     return {
       id: job.id,
       jobNumber: job.jobNumber,
