@@ -62,7 +62,14 @@ export function JobListCard({
   footer,
 }: JobListCardProps) {
   const displayName = customerName ?? formatMobileDisplay(mobile);
-  const showContact = shouldShowDeliveryContact(status) && deliveryContactStatus;
+  const pickupReady = shouldShowDeliveryContact(status);
+  const contactStatus =
+    pickupReady
+      ? (deliveryContactStatus ?? "not_contacted")
+      : deliveryContactStatus;
+  const showContact = Boolean(pickupReady && contactStatus);
+  // Ready/Return always open the delivery-call log (all staff roles).
+  const useDeliveryCallLog = enableDeliveryCallLog || pickupReady;
 
   const assigneeText =
     showAssignee && assigneeName ? (
@@ -72,7 +79,7 @@ export function JobListCard({
     ) : null;
 
   const expectedLabel =
-    deliveryContactStatus === "contacted"
+    contactStatus === "contacted"
       ? formatExpectedDeliveryDate(expectedDeliveryAt)
       : null;
 
@@ -96,7 +103,7 @@ export function JobListCard({
 
   const callControl =
     showCallIcon &&
-    (enableDeliveryCallLog ? (
+    (useDeliveryCallLog ? (
       <DeliveryCallButton
         jobId={id}
         jobNumber={jobNumber}
@@ -144,8 +151,8 @@ export function JobListCard({
         <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
           <div className="flex flex-wrap items-center justify-end gap-1">
             {badge ?? <JobStatusBadge status={status} />}
-            {showContact && (
-              <DeliveryContactBadge status={deliveryContactStatus} />
+            {showContact && contactStatus && (
+              <DeliveryContactBadge status={contactStatus} />
             )}
           </div>
           {callControl}

@@ -3,7 +3,10 @@
 import { AppShell } from "@/components/AppShell";
 import { AccessoryQtyInput } from "@/components/AccessoryQtyInput";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
+import { DeliveryCallButton } from "@/components/DeliveryCallButton";
+import { DeliveryContactBadge } from "@/components/DeliveryContactBadge";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
+import { shouldShowDeliveryContact } from "@/lib/delivery-contact";
 import { ReceiptActions } from "@/components/ReceiptActions";
 import { WhatsAppActions } from "@/components/WhatsAppActions";
 import { JobNotificationSettings } from "@/components/JobNotificationSettings";
@@ -52,6 +55,8 @@ type JobDetail = {
   warrantyCardPhotos?: string | null;
   remarks?: string | null;
   serviceAmount?: number | null;
+  deliveryContactStatus?: "not_contacted" | "contacted";
+  expectedDeliveryAt?: string | null;
   receivedAt: string;
   readyAt?: string | null;
   deliveredAt?: string | null;
@@ -672,6 +677,11 @@ export default function JobDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg font-bold text-slate-900">{job.jobNumber}</h1>
             <JobStatusBadge status={job.status} />
+            {shouldShowDeliveryContact(job.status) && (
+              <DeliveryContactBadge
+                status={job.deliveryContactStatus ?? "not_contacted"}
+              />
+            )}
             {showFinancials && job.serviceAmount != null && (
               <span className="ml-auto text-sm font-semibold text-emerald-700">
                 {formatCurrency(job.serviceAmount)}
@@ -869,7 +879,27 @@ export default function JobDetailPage() {
           <CompactRow label="Mobile">
             <span className="inline-flex min-w-0 items-center gap-1">
               <span className="truncate">{formatMobileDisplay(job.customer.mobile)}</span>
-              <CallCustomerButton mobile={job.customer.mobile} />
+              {shouldShowDeliveryContact(job.status) ? (
+                <DeliveryCallButton
+                  jobId={job.id}
+                  jobNumber={job.jobNumber}
+                  customerName={job.customer.name}
+                  mobile={job.customer.mobile}
+                  onLogged={(result) =>
+                    setJob((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            deliveryContactStatus: result.deliveryContactStatus,
+                            expectedDeliveryAt: result.expectedDeliveryAt,
+                          }
+                        : prev
+                    )
+                  }
+                />
+              ) : (
+                <CallCustomerButton mobile={job.customer.mobile} />
+              )}
             </span>
           </CompactRow>
           <CompactRow label="Product">{productLine || "—"}</CompactRow>

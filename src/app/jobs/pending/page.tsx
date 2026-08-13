@@ -33,6 +33,8 @@ type PendingJob = {
   receivedAt: string;
   readyAt?: string | null;
   serviceAmount?: number | null;
+  deliveryContactStatus?: "not_contacted" | "contacted";
+  expectedDeliveryAt?: string | null;
   assignedTechnician?: { name: string } | null;
   outsourcedTo?: { id: string; name: string } | null;
   isWarranty?: boolean;
@@ -301,6 +303,26 @@ function PendingJobsContent() {
     );
   }
 
+  function handleCallLogged(
+    jobId: string,
+    result: {
+      deliveryContactStatus: "not_contacted" | "contacted";
+      expectedDeliveryAt: string | null;
+    }
+  ) {
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId
+          ? {
+              ...job,
+              deliveryContactStatus: result.deliveryContactStatus,
+              expectedDeliveryAt: result.expectedDeliveryAt,
+            }
+          : job
+      )
+    );
+  }
+
   return (
     <AppShell>
       {isTechnician && scope === "my" && stats && statusFilter === "all" && (
@@ -461,6 +483,13 @@ function PendingJobsContent() {
               showAssignee={shouldShowAssignee(job)}
               assigneeName={jobAssigneeName(job.assignedTechnician)}
               meta={buildPendingMeta(job)}
+              deliveryContactStatus={
+                job.status === "Ready" || job.status === "Return"
+                  ? (job.deliveryContactStatus ?? "not_contacted")
+                  : undefined
+              }
+              expectedDeliveryAt={job.expectedDeliveryAt}
+              onDeliveryCallLogged={(result) => handleCallLogged(job.id, result)}
             />
           ))}
         </div>
