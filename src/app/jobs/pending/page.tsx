@@ -71,6 +71,26 @@ function parseActiveJobs(items: PendingJob[]): PendingJob[] {
   );
 }
 
+/** Pending / waiting first, then Ready / Return; oldest received first within each group. */
+const BOARD_STATUS_RANK: Record<string, number> = {
+  Pending: 0,
+  WaitingForCustomerApproval: 1,
+  Ready: 2,
+  Return: 3,
+  Outsourced: 4,
+  WarrantyPending: 5,
+  WarrantyWithCompany: 6,
+};
+
+function sortBoardJobs(items: PendingJob[]): PendingJob[] {
+  return [...items].sort((a, b) => {
+    const rankA = BOARD_STATUS_RANK[a.status] ?? 50;
+    const rankB = BOARD_STATUS_RANK[b.status] ?? 50;
+    if (rankA !== rankB) return rankA - rankB;
+    return new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
+  });
+}
+
 function PendingJobsContent() {
   const { role, loaded: roleLoaded } = useAuth();
   const searchParams = useSearchParams();
@@ -157,7 +177,7 @@ function PendingJobsContent() {
           return;
         }
 
-        setJobs(parseActiveJobs(data.items));
+        setJobs(sortBoardJobs(parseActiveJobs(data.items)));
         setTotal(data.total);
         setPage(data.page);
         setTotalPages(data.totalPages);
@@ -207,19 +227,35 @@ function PendingJobsContent() {
     }
 
     void loadTabTotal(activeQuery.toString(), setActiveTotal);
-    void loadTabTotal(
-      "status=Outsourced&scope=all&page=1&limit=1",
-      setOutsourcedTotal
-    );
-    void loadTabTotal(
-      "warranty=true&scope=all&page=1&limit=1",
-      setWarrantyTotal
-    );
+    // Warranty / Outsourced chips only appear on All Jobs for technicians.
+    if (!(role === "technician" && scope === "my")) {
+      void loadTabTotal(
+        "status=Outsourced&scope=all&page=1&limit=1",
+        setOutsourcedTotal
+      );
+      void loadTabTotal(
+        "warranty=true&scope=all&page=1&limit=1",
+        setWarrantyTotal
+      );
+    }
   }, [roleLoaded, role, scope, scopeReady]);
 
   useEffect(() => {
     if (!roleLoaded) return;
     if (role === "technician" && !scopeReady) return;
+
+    // My Jobs has no Warranty/Outsourced tabs — reset if we switched from All Jobs.
+    if (
+      role === "technician" &&
+      scope === "my" &&
+      (statusFilter === "Warranty" || statusFilter === "Outsourced")
+    ) {
+      setStatusFilter("all");
+      setPartnerFilter("");
+      setBrandFilter("");
+      setPage(1);
+      return;
+    }
 
     void loadJobs(page, role, scope, statusFilter, partnerFilter, brandFilter);
   }, [
@@ -253,6 +289,7 @@ function PendingJobsContent() {
   }
 
   const isTechnician = role === "technician";
+  const showSpecialFilters = !isTechnician || scope === "all";
   const allTabTotal = statusFilter === "all" ? total : activeTotal;
   const outsourcedCount =
     statusFilter === "Outsourced" ? total : outsourcedTotal;
@@ -341,41 +378,43 @@ function PendingJobsContent() {
         </div>
       )}
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => changeStatusFilter("all")}
-          className={`rounded-full px-3 py-1 text-xs font-medium ${
-            statusFilter === "all"
-              ? "bg-emerald-600 text-white"
-              : "border border-slate-300 bg-white text-slate-600"
-          }`}
-        >
-          All ({statusFilter === "all" ? total : allTabTotal})
-        </button>
-        <button
-          type="button"
-          onClick={() => changeStatusFilter("Warranty")}
-          className={`rounded-full px-3 py-1 text-xs font-medium ${
-            statusFilter === "Warranty"
-              ? "bg-sky-600 text-white"
-              : "border border-sky-200 bg-sky-50 text-sky-800"
-          }`}
-        >
-          Warranty ({warrantyCount})
-        </button>
-        <button
-          type="button"
-          onClick={() => changeStatusFilter("Outsourced")}
-          className={`rounded-full px-3 py-1 text-xs font-medium ${
-            statusFilter === "Outsourced"
-              ? "bg-purple-600 text-white"
-              : "border border-purple-200 bg-purple-50 text-purple-800"
-          }`}
-        >
-          Outsourced ({outsourcedCount})
-        </button>
-      </div>
+      {showSpecialFilters && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => changeStatusFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              statusFilter === "all"
+                ? "bg-emerald-600 text-white"
+                : "border border-slate-300 bg-white text-slate-600"
+            }`}
+          >
+            All ({statusFilter === "all" ? total : allTabTotal})
+          </button>
+          <button
+            type="button"
+            onClick={() => changeStatusFilter("Warranty")}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              statusFilter === "Warranty"
+                ? "bg-sky-600 text-white"
+                : "border border-sky-200 bg-sky-50 text-sky-800"
+            }`}
+          >
+            Warranty ({warrantyCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => changeStatusFilter("Outsourced")}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              statusFilter === "Outsourced"
+                ? "bg-purple-600 text-white"
+                : "border border-purple-200 bg-purple-50 text-purple-800"
+            }`}
+          >
+            Outsourced ({outsourcedCount})
+          </button>
+        </div>
+      )}
 
       {statusFilter === "Warranty" && warrantyBrands.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">

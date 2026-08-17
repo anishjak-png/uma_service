@@ -21,7 +21,7 @@ import {
 import { runPostJobCreateTasks } from "@/lib/job-create-background";
 import { canCreateJob } from "@/lib/auth";
 import { getSession } from "@/lib/session";
-import { ACTIVE_JOB_STATUSES, WARRANTY_JOB_STATUSES, warrantyFieldsSupported } from "@/lib/prisma-statuses";
+import { ACTIVE_JOB_STATUSES, TECH_MY_BOARD_STATUSES, WARRANTY_JOB_STATUSES, warrantyFieldsSupported } from "@/lib/prisma-statuses";
 import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
 import { getJobListSelect } from "@/lib/job-selects";
 import {
@@ -55,9 +55,14 @@ async function listJobs(request: NextRequest) {
 
   const where: Record<string, unknown> = {};
 
+  const isTechnicianMyScope =
+    session.isLoggedIn &&
+    session.role === "technician" &&
+    Boolean(session.technicianId) &&
+    scopeParam !== "all";
+
   if (session.isLoggedIn && session.role === "technician" && session.technicianId) {
-    const scope = scopeParam === "all" ? "all" : "my";
-    if (scope === "my") {
+    if (isTechnicianMyScope) {
       where.assignedTechnicianId = session.technicianId;
     }
   }
@@ -87,10 +92,16 @@ async function listJobs(request: NextRequest) {
     where.status = { in: WARRANTY_JOB_STATUSES };
     where.isWarranty = true;
   } else if (activeOnly) {
-    if (ACTIVE_JOB_STATUSES.length === 0) {
+    if (isTechnicianMyScope) {
+      if (TECH_MY_BOARD_STATUSES.length === 0) {
+        return NextResponse.json([]);
+      }
+      where.status = { in: TECH_MY_BOARD_STATUSES };
+    } else if (ACTIVE_JOB_STATUSES.length === 0) {
       return NextResponse.json([]);
+    } else {
+      where.status = { in: ACTIVE_JOB_STATUSES };
     }
-    where.status = { in: ACTIVE_JOB_STATUSES };
   }
 
   if (warrantyBrand) {
@@ -116,11 +127,12 @@ async function listJobs(request: NextRequest) {
       ? 100
       : 50;
 
+  // My Jobs / active board: Pending & Waiting first (alpha), then Ready/Return; oldest received first within each.
   const orderBy =
     deliveryOnly && !q
       ? { readyAt: "desc" as const }
       : activeOnly
-        ? { receivedAt: "asc" as const }
+        ? ([{ status: "asc" as const }, { receivedAt: "asc" as const }] as const)
         : { receivedAt: "desc" as const };
 
   if (paginate) {

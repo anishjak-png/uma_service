@@ -10,6 +10,14 @@ const ACTIVE_STATUS_VALUES = [
   "Return",
 ] as const;
 
+/** Technician My Jobs board — excludes warranty & outsourced (those stay on All Jobs). */
+const TECH_MY_BOARD_STATUS_VALUES = [
+  "Pending",
+  "WaitingForCustomerApproval",
+  "Ready",
+  "Return",
+] as const;
+
 const WARRANTY_STATUS_VALUES = [
   "WarrantyPending",
   "WarrantyWithCompany",
@@ -23,6 +31,8 @@ function knownStatuses(values: readonly string[]): JobStatus[] {
 
 /** Active job statuses for Prisma `where.status.in` — server routes only. */
 export const ACTIVE_JOB_STATUSES = knownStatuses(ACTIVE_STATUS_VALUES);
+
+export const TECH_MY_BOARD_STATUSES = knownStatuses(TECH_MY_BOARD_STATUS_VALUES);
 
 export const WARRANTY_JOB_STATUSES = knownStatuses(WARRANTY_STATUS_VALUES);
 
