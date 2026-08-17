@@ -1,5 +1,18 @@
-import { PrintJobStatus } from "@prisma/client";
+import { Prisma, PrintJobStatus } from "@prisma/client";
 import { prisma } from "./db";
+
+export type SalePrintPayload = {
+  billNo: string;
+  date: string;
+  items: Array<{
+    name: string;
+    code: string;
+    qty: number;
+    unit_price: number;
+    line_total: number;
+  }>;
+  total: number;
+};
 
 const DEFAULT_BRANCH_ID = process.env.PRINT_BRANCH_ID?.trim() || "main";
 const DEFAULT_PRINTER_ID = process.env.PRINT_PRINTER_ID?.trim() || "counter-1";
@@ -44,6 +57,50 @@ export async function enqueueReceiptPrint(
       status: "Pending",
       branchId: DEFAULT_BRANCH_ID,
       printerId: DEFAULT_PRINTER_ID,
+    },
+  });
+}
+
+export async function enqueueSalePrint(
+  payload: SalePrintPayload,
+  options?: { reprint?: boolean; supersedeId?: string }
+) {
+  if (options?.reprint && options.supersedeId) {
+    await prisma.printJob.updateMany({
+      where: {
+        id: options.supersedeId,
+        type: "sale",
+        status: { in: ["Pending", "Printing"] },
+      },
+      data: {
+        status: "Failed",
+        errorMessage: "Superseded by new print request",
+      },
+    });
+  }
+
+  return prisma.printJob.create({
+    data: {
+      jobCardId: null,
+      type: "sale",
+      payload: payload as Prisma.InputJsonValue,
+      status: "Pending",
+      branchId: DEFAULT_BRANCH_ID,
+      printerId: DEFAULT_PRINTER_ID,
+    },
+  });
+}
+
+export async function getSalePrintStatus(id: string) {
+  return prisma.printJob.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      status: true,
+      attempts: true,
+      errorMessage: true,
+      createdAt: true,
+      printedAt: true,
     },
   });
 }
@@ -102,7 +159,12 @@ export type PrintStatusResponse = {
 };
 
 export function toPrintStatusResponse(
-  job: Awaited<ReturnType<typeof getLatestPrintStatus>>
+  job: {
+    status: PrintJobStatus;
+    attempts: number;
+    errorMessage: string | null;
+    printedAt: Date | null;
+  } | null
 ): PrintStatusResponse | null {
   if (!job) return null;
   return {

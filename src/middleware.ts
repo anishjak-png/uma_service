@@ -63,6 +63,20 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (
+    pathname.startsWith("/spare-parts") ||
+    pathname.startsWith("/api/spare-parts")
+  ) {
+    if (session.role !== "admin") {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const home =
+        session.role === "technician" ? "/jobs/pending?scope=my" : "/dashboard";
+      return NextResponse.redirect(new URL(home, request.url));
+    }
+  }
+
   if (session.role === "technician") {
     const blocked =
       pathname.startsWith("/admin") ||

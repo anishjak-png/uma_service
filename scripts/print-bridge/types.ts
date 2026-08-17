@@ -1,7 +1,8 @@
 export type PrintJobRow = {
   id: string;
-  jobCardId: string;
+  jobCardId: string | null;
   type: string;
+  payload?: unknown;
   status: string;
   branchId: string;
   printerId: string;

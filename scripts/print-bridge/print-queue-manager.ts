@@ -4,6 +4,7 @@ import type { BridgeConfig } from "./config";
 import { log, type BridgeLogger } from "./logger";
 import { LanPrinter } from "./printer";
 import { buildReceiptBuffer } from "./receipt";
+import { buildSaleReceiptBuffer } from "./sale-receipt";
 import type { JobCardRow, PrintJobRow, QueuedPrintJob } from "./types";
 
 export class PrintQueueManager {
@@ -67,7 +68,7 @@ export class PrintQueueManager {
       const { data, error } = await this.supabase
         .from("PrintJob")
         .select(
-          "id, jobCardId, type, status, branchId, printerId, attempts, errorMessage, createdAt, printedAt"
+          "id, jobCardId, type, payload, status, branchId, printerId, attempts, errorMessage, createdAt, printedAt"
         )
         .eq("status", "Pending")
         .eq("branchId", this.config.branchId)
@@ -131,7 +132,7 @@ export class PrintQueueManager {
     const { data: printJob, error: jobError } = await this.supabase
       .from("PrintJob")
       .select(
-        "id, jobCardId, type, status, branchId, printerId, attempts, errorMessage, createdAt, printedAt"
+        "id, jobCardId, type, payload, status, branchId, printerId, attempts, errorMessage, createdAt, printedAt"
       )
       .eq("id", id)
       .single();
@@ -168,6 +169,36 @@ export class PrintQueueManager {
     if (claimError || !claimed) {
       this.logger.info(log.skipped(id, claimError?.message ?? "already claimed"));
       this.processedIds.add(id);
+      this.inFlightIds.delete(id);
+      return;
+    }
+
+    if (row.type === "sale") {
+      this.logger.info(log.printing(`sale:${isSaleBillNo(row.payload)}`));
+      try {
+        const buffer = buildSaleReceiptBuffer(row.payload, this.config);
+        await this.printer.print(buffer);
+        await this.markPrinted(id);
+        this.processedIds.add(id);
+        this.state.setLastPrinted(isSaleBillNo(row.payload));
+        this.logger.info(log.success(isSaleBillNo(row.payload)));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Print failed";
+        await this.markFailed(id, message);
+        this.processedIds.add(id);
+        this.state.setLastError(message);
+        this.logger.error(log.failed(isSaleBillNo(row.payload), message));
+      } finally {
+        this.inFlightIds.delete(id);
+      }
+      return;
+    }
+
+    if (!row.jobCardId) {
+      const msg = "Job card not found";
+      await this.markFailed(id, msg);
+      this.processedIds.add(id);
+      this.state.setLastError(msg);
       this.inFlightIds.delete(id);
       return;
     }
@@ -232,4 +263,12 @@ export class PrintQueueManager {
       })
       .eq("id", id);
   }
+}
+
+function isSaleBillNo(payload: unknown): string {
+  if (payload && typeof payload === "object" && "billNo" in payload) {
+    const billNo = (payload as { billNo?: unknown }).billNo;
+    if (typeof billNo === "string" && billNo) return billNo;
+  }
+  return "sale";
 }

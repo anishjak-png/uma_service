@@ -14,6 +14,8 @@ import { WhatsAppInboxTab } from "./WhatsAppInboxTab";
 import { StaffTab } from "./StaffTab";
 import { DevicesTab } from "./DevicesTab";
 import { OutsourceTab } from "./OutsourceTab";
+import { SparePartsTab } from "@/modules/spare-parts/components/SparePartsTab";
+import { isSparePartsEnabled } from "@/modules/spare-parts/enabled";
 import { reportJobsHref } from "@/lib/report-links";
 import { periodLabel, type ReportPeriod } from "@/lib/reports";
 
@@ -62,7 +64,8 @@ export default function AdminContent() {
     tabFromUrl === "appliances" ||
     tabFromUrl === "customers" ||
     tabFromUrl === "inbox" ||
-    tabFromUrl === "whatsapp"
+    tabFromUrl === "whatsapp" ||
+    tabFromUrl === "spare-parts"
       ? tabFromUrl
       : "devices";
 
@@ -95,6 +98,7 @@ export default function AdminContent() {
       requested === "customers" ||
       requested === "inbox" ||
       requested === "whatsapp" ||
+      requested === "spare-parts" ||
       requested === "reports"
     ) {
       setTab(requested);
@@ -149,6 +153,7 @@ export default function AdminContent() {
         <WhatsAppInboxTab onUnreadChange={setInboxUnreadCount} />
       )}
       {tab === "whatsapp" && <WhatsAppAutomationTab />}
+      {tab === "spare-parts" && isSparePartsEnabled() && <SparePartsTab />}
       {tab === "reports" && <ReportsTab />}
     </AppShell>
   );

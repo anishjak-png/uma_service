@@ -74,6 +74,23 @@ export async function requireWhatsAppInboxAccess() {
   return session;
 }
 
+/** Spare-parts billing — admin only for v1. */
+export function canAccessSpareParts(role: StaffRole) {
+  return role === "admin";
+}
+
+export async function requireSparePartsAccess() {
+  const session = await getSession();
+  if (
+    !session.isLoggedIn ||
+    !canAccessSpareParts(session.role) ||
+    !isDeviceApproved(session)
+  ) {
+    return null;
+  }
+  return session;
+}
+
 /** Amount is locked once the job has been marked Ready at least once. */
 export function isServiceAmountLocked(job: { readyAt: Date | null }) {
   return job.readyAt != null;

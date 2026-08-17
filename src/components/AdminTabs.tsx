@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { isSparePartsEnabled } from "@/modules/spare-parts/enabled";
 
 const tabs = [
   { id: "devices", label: "Devices" },
@@ -11,6 +12,7 @@ const tabs = [
   { id: "customers", label: "Customers" },
   { id: "inbox", label: "Inbox" },
   { id: "whatsapp", label: "WhatsApp" },
+  { id: "spare-parts", label: "Spare parts" },
 ] as const;
 
 export type AdminSettingsTab = (typeof tabs)[number]["id"];
@@ -29,7 +31,9 @@ export function AdminTabs({
 }) {
   return (
     <div className="mb-3 flex flex-wrap gap-1 rounded-md border border-slate-200 bg-white p-0.5">
-      {tabs.map((tab) => {
+      {tabs
+        .filter((tab) => tab.id !== "spare-parts" || isSparePartsEnabled())
+        .map((tab) => {
         const label =
           tab.id === "devices" && pendingDeviceCount > 0
             ? `${tab.label} (${pendingDeviceCount})`

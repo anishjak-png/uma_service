@@ -234,9 +234,10 @@ enum PrintJobStatus {
 
 model PrintJob {
   id           String         @id @default(cuid())
-  jobCardId    String
-  jobCard      JobCard        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  jobCardId    String?
+  jobCard      JobCard?       @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   type         String         @default("receipt")
+  payload      Json?
   status       PrintJobStatus @default(Pending)
   branchId     String         @default("main")
   printerId    String         @default("counter-1")
