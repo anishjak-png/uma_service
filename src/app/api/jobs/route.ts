@@ -128,12 +128,11 @@ async function listJobs(request: NextRequest) {
       : 50;
 
   // My Jobs / active board: Pending & Waiting first (alpha), then Ready/Return; oldest received first within each.
-  const orderBy =
-    deliveryOnly && !q
-      ? { readyAt: "desc" as const }
-      : activeOnly
-        ? ([{ status: "asc" as const }, { receivedAt: "asc" as const }] as const)
-        : { receivedAt: "desc" as const };
+  const orderBy = deliveryOnly && !q
+    ? [{ readyAt: "desc" as const }]
+    : activeOnly
+      ? [{ status: "asc" as const }, { receivedAt: "asc" as const }]
+      : [{ receivedAt: "desc" as const }];
 
   if (paginate) {
     const [total, jobs] = await Promise.all([
