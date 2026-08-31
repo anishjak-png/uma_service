@@ -9,25 +9,12 @@ import {
   wasDeliveredFromReturn,
   type ReportPeriod,
 } from "@/lib/reports";
+import { sumBillSplits } from "@/lib/currency";
 
 type ReportSection = "summary" | "technicians" | "brands-appliances";
 
 function sumAmount(jobs: { serviceAmount: number | null }[]) {
   return jobs.reduce((total, job) => total + (job.serviceAmount ?? 0), 0);
-}
-
-function avgAmount(jobs: { serviceAmount: number | null }[]) {
-  const withAmount = jobs.filter((j) => j.serviceAmount != null);
-  if (withAmount.length === 0) return 0;
-  return sumAmount(withAmount) / withAmount.length;
-}
-
-function billRange(jobs: { serviceAmount: number | null }[]) {
-  const amounts = jobs
-    .map((j) => j.serviceAmount)
-    .filter((a): a is number => a != null);
-  if (amounts.length === 0) return { lowest: 0, highest: 0 };
-  return { lowest: Math.min(...amounts), highest: Math.max(...amounts) };
 }
 
 function countStatus(jobs: { status: string }[], status: string) {
@@ -53,6 +40,8 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
         select: {
           status: true,
           serviceAmount: true,
+          serviceCharge: true,
+          sparesAmount: true,
           statusHistory: {
             orderBy: [{ changedAt: "desc" }, { id: "desc" }],
             take: 8,
@@ -62,7 +51,13 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
       }),
       prisma.jobCard.findMany({
         where: { status: "Ready" },
-        select: { serviceAmount: true, readyAt: true, receivedAt: true },
+        select: {
+          serviceAmount: true,
+          serviceCharge: true,
+          sparesAmount: true,
+          readyAt: true,
+          receivedAt: true,
+        },
       }),
       prisma.jobCard.findMany({
         where: { status: "Return" },
@@ -100,7 +95,8 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
   const jobsReturned = deliveredJobs.filter((j) =>
     wasDeliveredFromReturn(j.statusHistory)
   ).length;
-  const totalCollection = sumAmount(deliveredJobs);
+  const collectionSplit = sumBillSplits(deliveredJobs);
+  const readyLiveSplit = sumBillSplits(readyLiveJobs);
 
   const undeliveredReady = countStatus(cohortJobs, "Ready");
   const undeliveredReturn = countStatus(cohortJobs, "Return");
@@ -139,7 +135,9 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
       pendingOpenWaiting: cohortWaiting,
       pendingOpenOutsourced: cohortOutsourced,
       pendingOpenWarranty: cohortWarranty,
-      totalCollection,
+      totalCollection: collectionSplit.totalCollection,
+      serviceChargeTotal: collectionSplit.serviceChargeTotal,
+      sparesAmountTotal: collectionSplit.sparesAmountTotal,
       jobsReturned,
       jobsDeliveredReady: delivered - jobsReturned,
       jobsDeliveredReturn: jobsReturned,
@@ -148,13 +146,17 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
       outsourcedLive: liveByStatus.Outsourced ?? 0,
       warrantyLive,
       readyLive: readyLiveJobs.length,
-      readyLiveAmount: sumAmount(readyLiveJobs),
+      readyLiveAmount: readyLiveSplit.totalCollection,
+      readyLiveServiceCharge: readyLiveSplit.serviceChargeTotal,
+      readyLiveSparesAmount: readyLiveSplit.sparesAmountTotal,
     },
     pendingAging: agingBuckets(pendingLiveJobs.map((j) => j.receivedAt)),
     undeliveredAging: agingBuckets(undeliveredAgeDates),
     readyNotDelivered: {
       count: readyLiveJobs.length,
-      totalAmount: sumAmount(readyLiveJobs),
+      totalAmount: readyLiveSplit.totalCollection,
+      serviceChargeTotal: readyLiveSplit.serviceChargeTotal,
+      sparesAmountTotal: readyLiveSplit.sparesAmountTotal,
     },
   };
 }
@@ -195,7 +197,12 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
           status: "Delivered",
           deliveredAt: { gte: start, lt: end },
         },
-        select: { completedByTechnicianId: true, serviceAmount: true },
+        select: {
+          completedByTechnicianId: true,
+          serviceAmount: true,
+          serviceCharge: true,
+          sparesAmount: true,
+        },
       }),
     ]);
 
@@ -207,11 +214,35 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
     completedInPeriod.map((row) => [row.completedByTechnicianId!, row._count.id])
   );
 
-  const deliveredByTech = new Map<string, { serviceAmount: number | null }[]>();
+  type DeliveredBill = {
+    serviceAmount: number | null;
+    serviceCharge: number | null;
+    sparesAmount: number | null;
+  };
+
+  function splitAmounts(job: DeliveredBill) {
+    if (job.serviceCharge != null || job.sparesAmount != null) {
+      return {
+        serviceCharge: job.serviceCharge ?? 0,
+        sparesAmount: job.sparesAmount ?? 0,
+      };
+    }
+    // Legacy jobs: full total counts as service charge
+    return {
+      serviceCharge: job.serviceAmount ?? 0,
+      sparesAmount: 0,
+    };
+  }
+
+  const deliveredByTech = new Map<string, DeliveredBill[]>();
   for (const job of deliveredInPeriod) {
     const techId = job.completedByTechnicianId!;
     const list = deliveredByTech.get(techId) ?? [];
-    list.push({ serviceAmount: job.serviceAmount });
+    list.push({
+      serviceAmount: job.serviceAmount,
+      serviceCharge: job.serviceCharge,
+      sparesAmount: job.sparesAmount,
+    });
     deliveredByTech.set(techId, list);
   }
 
@@ -233,7 +264,14 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       const deliveredJobs = deliveredByTech.get(tech.id) ?? [];
       const delivered = deliveredJobs.length;
       const totalCollection = sumAmount(deliveredJobs);
-      const { lowest, highest } = billRange(deliveredJobs);
+      const serviceChargeTotal = deliveredJobs.reduce(
+        (sum, job) => sum + splitAmounts(job).serviceCharge,
+        0
+      );
+      const sparesAmountTotal = deliveredJobs.reduce(
+        (sum, job) => sum + splitAmounts(job).sparesAmount,
+        0
+      );
 
       return {
         id: tech.id,
@@ -249,9 +287,8 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
         completed,
         delivered,
         totalCollection,
-        averageBill: avgAmount(deliveredJobs),
-        lowestBill: lowest,
-        highestBill: highest,
+        serviceChargeTotal,
+        sparesAmountTotal,
       };
     })
     .sort((a, b) => {
@@ -272,6 +309,8 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       completed: acc.completed + row.completed,
       delivered: acc.delivered + row.delivered,
       totalCollection: acc.totalCollection + row.totalCollection,
+      serviceChargeTotal: acc.serviceChargeTotal + row.serviceChargeTotal,
+      sparesAmountTotal: acc.sparesAmountTotal + row.sparesAmountTotal,
     }),
     {
       received: 0,
@@ -283,6 +322,8 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       completed: 0,
       delivered: 0,
       totalCollection: 0,
+      serviceChargeTotal: 0,
+      sparesAmountTotal: 0,
     }
   );
 
@@ -298,6 +339,8 @@ async function buildBrandApplianceReports(
     where: { receivedAt: { gte: start, lt: end } },
     select: {
       serviceAmount: true,
+      serviceCharge: true,
+      sparesAmount: true,
       status: true,
       applianceType: true,
       brand: true,
@@ -311,23 +354,26 @@ async function buildBrandApplianceReports(
 
   const applianceReports = applianceTypes.map((applianceType) => {
     const jobs = jobsInPeriod.filter((j) => j.applianceType === applianceType);
-    const billable = jobs.filter(
-      (j) => j.serviceAmount != null && j.status !== "Pending"
-    );
+    const delivered = jobs.filter((j) => j.status === "Delivered");
+    const split = sumBillSplits(delivered);
     return {
       applianceType,
       totalJobs: jobs.length,
-      totalCollection: sumAmount(jobs.filter((j) => j.status === "Delivered")),
-      averageServiceAmount: avgAmount(billable),
+      totalCollection: split.totalCollection,
+      serviceChargeTotal: split.serviceChargeTotal,
+      sparesAmountTotal: split.sparesAmountTotal,
     };
   });
 
   const brandReports = brands.map((brand) => {
     const jobs = jobsInPeriod.filter((j) => j.brand === brand);
+    const split = sumBillSplits(jobs.filter((j) => j.status === "Delivered"));
     return {
       brand,
       totalJobs: jobs.length,
-      totalCollection: sumAmount(jobs.filter((j) => j.status === "Delivered")),
+      totalCollection: split.totalCollection,
+      serviceChargeTotal: split.serviceChargeTotal,
+      sparesAmountTotal: split.sparesAmountTotal,
     };
   });
 
@@ -346,7 +392,7 @@ export async function GET(request: NextRequest) {
     "summary") as ReportSection;
   const { start, end } = getPeriodRange(period);
 
-  const cacheKey = `reports:v5:${section}:${period}`;
+  const cacheKey = `reports:v8:${section}:${period}`;
   const cached = getCached<unknown>(cacheKey);
   if (cached) {
     return NextResponse.json(cached);

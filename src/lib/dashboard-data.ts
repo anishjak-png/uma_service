@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { sumBillSplits } from "@/lib/currency";
 
 function todayRange() {
   const today = new Date();
@@ -36,6 +37,8 @@ const readyPickupSelect = {
   applianceType: true,
   readyAt: true,
   serviceAmount: true,
+  serviceCharge: true,
+  sparesAmount: true,
   deliveryContactStatus: true,
   expectedDeliveryAt: true,
   customer: { select: { name: true, mobile: true } },
@@ -89,7 +92,7 @@ export async function getAdminDashboardData() {
   const { today, tomorrow } = todayRange();
   const { monthStart, nextMonth } = monthRange();
 
-  const [todayJobs, statusGroups, todayCollection, monthlyCollection, readyCollection, readyRows] =
+  const [todayJobs, statusGroups, todayDelivered, monthlyDelivered, readyRows] =
     await Promise.all([
       prisma.jobCard.count({
         where: { receivedAt: { gte: today, lt: tomorrow } },
@@ -98,20 +101,24 @@ export async function getAdminDashboardData() {
         by: ["status"],
         _count: { id: true },
       }),
-      prisma.jobCard.aggregate({
+      prisma.jobCard.findMany({
         where: { status: "Delivered", deliveredAt: { gte: today, lt: tomorrow } },
-        _sum: { serviceAmount: true },
+        select: {
+          serviceAmount: true,
+          serviceCharge: true,
+          sparesAmount: true,
+        },
       }),
-      prisma.jobCard.aggregate({
+      prisma.jobCard.findMany({
         where: {
           status: "Delivered",
           deliveredAt: { gte: monthStart, lt: nextMonth },
         },
-        _sum: { serviceAmount: true },
-      }),
-      prisma.jobCard.aggregate({
-        where: { status: "Ready" },
-        _sum: { serviceAmount: true },
+        select: {
+          serviceAmount: true,
+          serviceCharge: true,
+          sparesAmount: true,
+        },
       }),
       prisma.jobCard.findMany({
         where: { status: "Ready" },
@@ -120,13 +127,22 @@ export async function getAdminDashboardData() {
     ]);
 
   const counts = countsFromGroups(statusGroups);
+  const todaySplit = sumBillSplits(todayDelivered);
+  const monthlySplit = sumBillSplits(monthlyDelivered);
+  const readySplit = sumBillSplits(readyRows);
 
   return {
     todayJobs,
     ...counts,
-    todayCollection: todayCollection._sum.serviceAmount ?? 0,
-    monthlyCollection: monthlyCollection._sum.serviceAmount ?? 0,
-    pendingCollection: readyCollection._sum.serviceAmount ?? 0,
+    todayCollection: todaySplit.totalCollection,
+    todayServiceCharge: todaySplit.serviceChargeTotal,
+    todaySparesAmount: todaySplit.sparesAmountTotal,
+    monthlyCollection: monthlySplit.totalCollection,
+    monthlyServiceCharge: monthlySplit.serviceChargeTotal,
+    monthlySparesAmount: monthlySplit.sparesAmountTotal,
+    pendingCollection: readySplit.totalCollection,
+    pendingServiceCharge: readySplit.serviceChargeTotal,
+    pendingSparesAmount: readySplit.sparesAmountTotal,
     readyForPickup: sortReadyForPickup(readyRows).map((j) => ({
       ...j,
       readyAt: j.readyAt?.toISOString() ?? null,

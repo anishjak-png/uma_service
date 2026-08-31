@@ -3,7 +3,7 @@ import { JobStatusBadge } from "@/components/JobStatusBadge";
 import { CallCustomerButton } from "@/components/CallCustomerButton";
 import { DeliveryCallButton } from "@/components/DeliveryCallButton";
 import { DeliveryContactBadge } from "@/components/DeliveryContactBadge";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, formatBillSplitLine } from "@/lib/currency";
 import {
   formatExpectedDeliveryDate,
   shouldShowDeliveryContact,
@@ -26,6 +26,10 @@ export type JobListCardProps = {
   showAssignee?: boolean;
   meta?: ReactNode;
   serviceAmount?: number | null;
+  serviceCharge?: number | null;
+  sparesAmount?: number | null;
+  /** Admin-only: show Service · Spares under the total. */
+  showBillSplit?: boolean;
   showServiceAmount?: boolean;
   showCallIcon?: boolean;
   deliveryContactStatus?: DeliveryContactStatus;
@@ -52,6 +56,9 @@ export function JobListCard({
   showAssignee = false,
   meta,
   serviceAmount,
+  serviceCharge,
+  sparesAmount,
+  showBillSplit = false,
   showServiceAmount = true,
   showCallIcon = true,
   deliveryContactStatus,
@@ -143,9 +150,20 @@ export function JobListCard({
             </p>
           )}
           {displayAmount && (
-            <p className="mt-1 text-xs font-semibold text-emerald-700">
-              {formatCurrency(serviceAmount)}
-            </p>
+            <div className="mt-1">
+              <p className="text-xs font-semibold text-emerald-700">
+                {formatCurrency(serviceAmount)}
+              </p>
+              {showBillSplit && (
+                <p className="text-[10px] font-normal text-slate-500">
+                  {formatBillSplitLine({
+                    serviceAmount,
+                    serviceCharge,
+                    sparesAmount,
+                  })}
+                </p>
+              )}
+            </div>
           )}
         </Link>
         <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">

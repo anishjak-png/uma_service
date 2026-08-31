@@ -28,6 +28,8 @@ type JobResult = {
   readyAt?: string | null;
   deliveredAt?: string | null;
   serviceAmount?: number | null;
+  serviceCharge?: number | null;
+  sparesAmount?: number | null;
   deliveryContactStatus?: "not_contacted" | "contacted";
   expectedDeliveryAt?: string | null;
   customer: { mobile: string; name?: string | null };
@@ -491,6 +493,9 @@ export default function SearchContent() {
       applianceLine: [job.brand, job.applianceType].filter(Boolean).join(" "),
       complaint: job.complaint,
       serviceAmount: job.serviceAmount,
+      serviceCharge: job.serviceCharge,
+      sparesAmount: job.sparesAmount,
+      showBillSplit: role === "admin",
       showServiceAmount: showAmounts,
       emphasis: warrantyEmphasis(job),
       meta: buildSearchMeta(job),

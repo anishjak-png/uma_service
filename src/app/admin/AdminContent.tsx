@@ -1111,6 +1111,8 @@ function ReportsTab() {
       pendingOpenOutsourced: number;
       pendingOpenWarranty: number;
       totalCollection: number;
+      serviceChargeTotal: number;
+      sparesAmountTotal: number;
       jobsReturned: number;
       jobsDeliveredReady: number;
       jobsDeliveredReturn: number;
@@ -1120,6 +1122,8 @@ function ReportsTab() {
       warrantyLive: number;
       readyLive: number;
       readyLiveAmount: number;
+      readyLiveServiceCharge: number;
+      readyLiveSparesAmount: number;
     };
     pendingAging: { over3Days: number; over7Days: number; over15Days: number };
     undeliveredAging: { over3Days: number; over7Days: number; over15Days: number };
@@ -1138,9 +1142,8 @@ function ReportsTab() {
       completed: number;
       delivered: number;
       totalCollection: number;
-      averageBill: number;
-      lowestBill: number;
-      highestBill: number;
+      serviceChargeTotal: number;
+      sparesAmountTotal: number;
     }>;
     totals: {
       received: number;
@@ -1152,6 +1155,8 @@ function ReportsTab() {
       completed: number;
       delivered: number;
       totalCollection: number;
+      serviceChargeTotal: number;
+      sparesAmountTotal: number;
     };
   } | null>(null);
   const [brandData, setBrandData] = useState<{
@@ -1159,12 +1164,15 @@ function ReportsTab() {
       applianceType: string;
       totalJobs: number;
       totalCollection: number;
-      averageServiceAmount: number;
+      serviceChargeTotal: number;
+      sparesAmountTotal: number;
     }>;
     brandReports: Array<{
       brand: string;
       totalJobs: number;
       totalCollection: number;
+      serviceChargeTotal: number;
+      sparesAmountTotal: number;
     }>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1338,7 +1346,18 @@ function ReportsTab() {
               <StatCard
                 label="Collection"
                 value={formatRs(summary.summary.totalCollection)}
-                subtext={`${summary.summary.jobsDeliveredReady} repair · ${summary.summary.jobsDeliveredReturn} return`}
+                subtext={
+                  <>
+                    <p>
+                      Service {formatRs(summary.summary.serviceChargeTotal)} ·
+                      Spares {formatRs(summary.summary.sparesAmountTotal)}
+                    </p>
+                    <p>
+                      {summary.summary.jobsDeliveredReady} repair ·{" "}
+                      {summary.summary.jobsDeliveredReturn} return
+                    </p>
+                  </>
+                }
                 href={reportJobsHref({
                   receivedPeriod: period,
                   pipeline: "delivered",
@@ -1372,7 +1391,7 @@ function ReportsTab() {
               <StatCard
                 label="Ready"
                 value={summary.summary.readyLive}
-                subtext={formatRs(summary.summary.readyLiveAmount)}
+                subtext={`${formatRs(summary.summary.readyLiveAmount)} · Svc ${formatRs(summary.summary.readyLiveServiceCharge)} · Spares ${formatRs(summary.summary.readyLiveSparesAmount)}`}
                 href={reportJobsHref({ status: "Ready" })}
                 valueClassName="text-emerald-700"
               />
@@ -1605,12 +1624,10 @@ function ReportsTab() {
                             value={formatRs(row.totalCollection)}
                           />
                         </div>
-                        {row.delivered > 0 ? (
-                          <p className="mt-1.5 text-xs text-slate-500">
-                            Avg {formatRs(Math.round(row.averageBill))} · Bills{" "}
-                            {formatRs(row.lowestBill)} – {formatRs(row.highestBill)}
-                          </p>
-                        ) : null}
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
+                          {formatRs(row.sparesAmountTotal)}
+                        </p>
                       </div>
                     </CardContent>
                   </Card>
@@ -1648,8 +1665,11 @@ function ReportsTab() {
                       >
                         <span className="text-slate-700">{row.applianceType}</span>
                         <span className="text-right text-slate-900">
-                          {row.totalJobs} jobs · {formatRs(row.totalCollection)} · avg{" "}
-                          {formatRs(Math.round(row.averageServiceAmount))}
+                          {row.totalJobs} jobs · {formatRs(row.totalCollection)}
+                          <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                            Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
+                            {formatRs(row.sparesAmountTotal)}
+                          </span>
                         </span>
                       </Link>
                     ))
@@ -1677,8 +1697,12 @@ function ReportsTab() {
                         className="flex justify-between rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
                       >
                         <span className="text-slate-700">{row.brand}</span>
-                        <span className="font-semibold text-slate-900">
+                        <span className="text-right font-semibold text-slate-900">
                           {row.totalJobs} · {formatRs(row.totalCollection)}
+                          <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                            Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
+                            {formatRs(row.sparesAmountTotal)}
+                          </span>
                         </span>
                       </Link>
                     ))

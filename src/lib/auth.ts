@@ -54,7 +54,7 @@ export function canEditServiceAmount(role: StaffRole) {
 }
 
 export function canEditCompletedBy(role: StaffRole) {
-  return role === "admin";
+  return role === "admin" || role === "reception" || role === "technician";
 }
 
 /** WhatsApp inbox — admin only for v1; extend to reception later. */

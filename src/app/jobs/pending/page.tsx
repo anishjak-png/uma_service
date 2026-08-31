@@ -33,6 +33,8 @@ type PendingJob = {
   receivedAt: string;
   readyAt?: string | null;
   serviceAmount?: number | null;
+  serviceCharge?: number | null;
+  sparesAmount?: number | null;
   deliveryContactStatus?: "not_contacted" | "contacted";
   expectedDeliveryAt?: string | null;
   assignedTechnician?: { name: string } | null;
@@ -517,6 +519,9 @@ function PendingJobsContent() {
                 .join(" ")}
               complaint={job.complaint}
               serviceAmount={job.serviceAmount}
+              serviceCharge={job.serviceCharge}
+              sparesAmount={job.sparesAmount}
+              showBillSplit={role === "admin"}
               showServiceAmount={!isTechnician}
               emphasis={warrantyEmphasis(job)}
               showAssignee={shouldShowAssignee(job)}

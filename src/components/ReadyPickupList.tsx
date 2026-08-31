@@ -12,6 +12,8 @@ type ReadyJob = {
   applianceType: string;
   readyAt?: string | Date | null;
   serviceAmount?: number | null;
+  serviceCharge?: number | null;
+  sparesAmount?: number | null;
   deliveryContactStatus: DeliveryContactStatus;
   expectedDeliveryAt?: string | Date | null;
   customer: { name?: string | null; mobile: string };
@@ -47,7 +49,14 @@ function FilterTab({
   );
 }
 
-export function ReadyPickupList({ jobs: initialJobs }: { jobs: ReadyJob[] }) {
+export function ReadyPickupList({
+  jobs: initialJobs,
+  showBillSplit = false,
+}: {
+  jobs: ReadyJob[];
+  /** Admin-only service/spares line under total. */
+  showBillSplit?: boolean;
+}) {
   const [jobs, setJobs] = useState(initialJobs);
   const [filter, setFilter] = useState<ContactFilter>("all");
 
@@ -141,6 +150,9 @@ export function ReadyPickupList({ jobs: initialJobs }: { jobs: ReadyJob[] }) {
                 mobile={job.customer.mobile}
                 applianceLine={appliance}
                 serviceAmount={job.serviceAmount}
+                serviceCharge={job.serviceCharge}
+                sparesAmount={job.sparesAmount}
+                showBillSplit={showBillSplit}
                 meta={[repairedBy, doneLabel].filter(Boolean).join(" · ")}
                 deliveryContactStatus={job.deliveryContactStatus}
                 expectedDeliveryAt={job.expectedDeliveryAt}

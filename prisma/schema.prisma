@@ -167,6 +167,8 @@ model JobCard {
   warrantyCardPhotos   String?
   accessories          String?
   serviceAmount        Float?
+  serviceCharge        Float?
+  sparesAmount         Float?
   status               JobStatus       @default(Pending)
   remarks                      String?
   whatsappNotificationsOverride Boolean?

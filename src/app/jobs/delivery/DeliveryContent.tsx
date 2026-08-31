@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { JobListCard } from "@/components/JobListCard";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
 import type { DeliveryContactStatus } from "@prisma/client";
@@ -16,6 +17,8 @@ type DeliveryJob = {
   brand?: string | null;
   readyAt?: string | null;
   serviceAmount?: number | null;
+  serviceCharge?: number | null;
+  sparesAmount?: number | null;
   deliveryContactStatus?: DeliveryContactStatus;
   expectedDeliveryAt?: string | null;
   customer: { mobile: string; name?: string | null };
@@ -25,6 +28,7 @@ const DELIVERY_STATUSES = new Set(["Ready", "Return"]);
 
 export default function DeliveryContent() {
   const searchParams = useSearchParams();
+  const { role } = useAuth();
   const initialQ = searchParams.get("q") ?? "";
 
   const [query, setQuery] = useState(initialQ);
@@ -163,6 +167,9 @@ export default function DeliveryContent() {
                 mobile={job.customer.mobile}
                 applianceLine={appliance}
                 serviceAmount={job.serviceAmount}
+                serviceCharge={job.serviceCharge}
+                sparesAmount={job.sparesAmount}
+                showBillSplit={role === "admin"}
                 meta={doneLabel ?? undefined}
                 deliveryContactStatus={
                   job.deliveryContactStatus ?? "not_contacted"

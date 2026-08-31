@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { parseServiceAmount } from "@/lib/currency";
+import { resolveBillSplit } from "@/lib/currency";
 import { getJobPatchSelect } from "@/lib/job-selects";
 import {
   accessoryNames,
@@ -75,7 +75,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const amountLocked = isServiceAmountLocked(existing);
 
     if (
-      body.serviceAmount !== undefined &&
+      (body.serviceAmount !== undefined ||
+        body.serviceCharge !== undefined ||
+        body.sparesAmount !== undefined) &&
       !body.status &&
       !canEditServiceAmount(session.role)
     ) {
@@ -192,14 +194,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             );
           }
         } else {
-          const amount = parseServiceAmount(body.serviceAmount);
-          if (amount == null) {
+          const parsed =
+            body.serviceCharge !== undefined ||
+            body.sparesAmount !== undefined ||
+            body.serviceAmount !== undefined
+              ? resolveBillSplit(body)
+              : { serviceCharge: 0, sparesAmount: 0, serviceAmount: 0 };
+          if (!parsed) {
             return NextResponse.json(
-              { error: "Service amount is required when marking Ready" },
+              { error: "Invalid service or spares amount" },
               { status: 400 }
             );
           }
-          data.serviceAmount = amount;
+          data.serviceCharge = parsed.serviceCharge;
+          data.sparesAmount = parsed.sparesAmount;
+          data.serviceAmount = parsed.serviceAmount;
         }
         if (!existing.readyAt) {
           data.readyAt = new Date();
@@ -219,28 +228,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           data.warrantyTakenAt = null;
           statusNote =
             body.note ?? `Warranty completed by ${existing.brand} — Ready`;
-        } else if (!existing.completedByTechnicianId) {
-          if (session.role === "technician" && session.technicianId) {
-            data.completedByTechnicianId = session.technicianId;
-          } else if (session.role === "reception" || session.role === "admin") {
-            const completedById = body.completedByTechnicianId;
-            if (!completedById || typeof completedById !== "string") {
-              return NextResponse.json(
-                { error: "Select the technician who completed the repair" },
-                { status: 400 }
-              );
-            }
-            const technician = await prisma.technician.findFirst({
-              where: { id: completedById, active: true },
-            });
-            if (!technician) {
-              return NextResponse.json(
-                { error: "Invalid technician selected" },
-                { status: 400 }
-              );
-            }
-            data.completedByTechnicianId = completedById;
+        } else {
+          const completedById =
+            typeof body.completedByTechnicianId === "string" &&
+            body.completedByTechnicianId
+              ? body.completedByTechnicianId
+              : session.role === "technician"
+                ? session.technicianId
+                : existing.completedByTechnicianId;
+          if (!completedById || typeof completedById !== "string") {
+            return NextResponse.json(
+              { error: "Select the technician who completed the repair" },
+              { status: 400 }
+            );
           }
+          const technician = await prisma.technician.findFirst({
+            where: { id: completedById, active: true },
+          });
+          if (!technician) {
+            return NextResponse.json(
+              { error: "Invalid technician selected" },
+              { status: 400 }
+            );
+          }
+          data.completedByTechnicianId = completedById;
         }
 
         data.status = "Ready";
@@ -249,7 +260,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         data.expectedDeliveryAt = null;
         if (!statusNote) statusNote = body.note ?? undefined;
       } else if (newStatus === "Return") {
+        const returnNote =
+          typeof body.note === "string" ? body.note.trim() : "";
+        if (!returnNote) {
+          return NextResponse.json(
+            { error: "Return note is required" },
+            { status: 400 }
+          );
+        }
+
         data.serviceAmount = 0;
+        data.serviceCharge = 0;
+        data.sparesAmount = 0;
         data.status = "Return";
         statusChange = "Return";
 
@@ -260,14 +282,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           const partner = await prisma.outsourcePartner.findUnique({
             where: { id: existing.outsourcedToId },
           });
-          statusNote =
-            body.note ??
-            `Received from ${partner?.name ?? "outsource partner"} — Return`;
+          statusNote = `${returnNote} · Received from ${partner?.name ?? "outsource partner"}`;
         } else if (fromWarranty) {
           data.warrantyTakenAt = null;
-          statusNote = body.note ?? `Warranty return by ${existing.brand}`;
+          statusNote = `${returnNote} · Warranty return by ${existing.brand}`;
         } else {
-          statusNote = body.note ?? undefined;
+          statusNote = returnNote;
         }
       } else {
         data.status = newStatus;
@@ -283,18 +303,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     if (
-      body.serviceAmount !== undefined &&
+      (body.serviceAmount !== undefined ||
+        body.serviceCharge !== undefined ||
+        body.sparesAmount !== undefined) &&
       !body.status &&
       canEditServiceAmount(session.role)
     ) {
-      const amount = parseServiceAmount(body.serviceAmount);
-      if (amount == null) {
+      const parsed = resolveBillSplit(body);
+      if (!parsed) {
         return NextResponse.json(
-          { error: "Invalid service amount" },
+          { error: "Invalid service or spares amount" },
           { status: 400 }
         );
       }
-      data.serviceAmount = amount;
+      data.serviceCharge = parsed.serviceCharge;
+      data.sparesAmount = parsed.sparesAmount;
+      data.serviceAmount = parsed.serviceAmount;
     }
 
     if (body.remarks != null) {
@@ -333,14 +357,28 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.assignedTechnicianId = body.assignedTechnicianId || null;
     }
 
-    if (body.completedByTechnicianId !== undefined) {
+    // Ready flow sets completed-by above. Standalone edits also allowed for
+    // admin / reception / technician (canEditCompletedBy).
+    if (body.completedByTechnicianId !== undefined && body.status !== "Ready") {
       if (!canEditCompletedBy(session.role)) {
         return NextResponse.json(
-          { error: "Only admin can change completed by technician" },
+          { error: "Not allowed to change completed by technician" },
           { status: 403 }
         );
       }
-      data.completedByTechnicianId = body.completedByTechnicianId || null;
+      const completedById = body.completedByTechnicianId || null;
+      if (completedById) {
+        const technician = await prisma.technician.findFirst({
+          where: { id: completedById, active: true },
+        });
+        if (!technician) {
+          return NextResponse.json(
+            { error: "Invalid technician selected" },
+            { status: 400 }
+          );
+        }
+      }
+      data.completedByTechnicianId = completedById;
     }
 
     if (body.whatsappNotificationsOverride !== undefined) {

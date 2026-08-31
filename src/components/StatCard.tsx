@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 export function StatCard({
   label,
@@ -9,7 +10,7 @@ export function StatCard({
 }: {
   label: string;
   value: string | number;
-  subtext?: string;
+  subtext?: ReactNode;
   href?: string;
   valueClassName?: string;
 }) {
@@ -23,7 +24,9 @@ export function StatCard({
       <p className={`text-lg font-bold leading-tight ${valueClassName}`}>
         {value}
       </p>
-      {subtext && <p className="text-xs text-slate-400">{subtext}</p>}
+      {subtext != null && subtext !== "" && (
+        <div className="text-xs leading-snug text-slate-400">{subtext}</div>
+      )}
     </div>
   );
 
