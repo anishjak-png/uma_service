@@ -138,6 +138,7 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
       totalCollection: collectionSplit.totalCollection,
       serviceChargeTotal: collectionSplit.serviceChargeTotal,
       sparesAmountTotal: collectionSplit.sparesAmountTotal,
+      splitJobCount: collectionSplit.splitJobCount,
       jobsReturned,
       jobsDeliveredReady: delivered - jobsReturned,
       jobsDeliveredReturn: jobsReturned,
@@ -149,6 +150,7 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
       readyLiveAmount: readyLiveSplit.totalCollection,
       readyLiveServiceCharge: readyLiveSplit.serviceChargeTotal,
       readyLiveSparesAmount: readyLiveSplit.sparesAmountTotal,
+      readyLiveSplitJobCount: readyLiveSplit.splitJobCount,
     },
     pendingAging: agingBuckets(pendingLiveJobs.map((j) => j.receivedAt)),
     undeliveredAging: agingBuckets(undeliveredAgeDates),
@@ -157,6 +159,7 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
       totalAmount: readyLiveSplit.totalCollection,
       serviceChargeTotal: readyLiveSplit.serviceChargeTotal,
       sparesAmountTotal: readyLiveSplit.sparesAmountTotal,
+      splitJobCount: readyLiveSplit.splitJobCount,
     },
   };
 }
@@ -225,12 +228,14 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       return {
         serviceCharge: job.serviceCharge ?? 0,
         sparesAmount: job.sparesAmount ?? 0,
+        hasSplit: true as const,
       };
     }
-    // Legacy jobs: full total counts as service charge
+    // Legacy total-only jobs: no invented split
     return {
-      serviceCharge: job.serviceAmount ?? 0,
+      serviceCharge: 0,
       sparesAmount: 0,
+      hasSplit: false as const,
     };
   }
 
@@ -264,12 +269,16 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       const deliveredJobs = deliveredByTech.get(tech.id) ?? [];
       const delivered = deliveredJobs.length;
       const totalCollection = sumAmount(deliveredJobs);
-      const serviceChargeTotal = deliveredJobs.reduce(
-        (sum, job) => sum + splitAmounts(job).serviceCharge,
-        0
-      );
-      const sparesAmountTotal = deliveredJobs.reduce(
-        (sum, job) => sum + splitAmounts(job).sparesAmount,
+      const serviceChargeTotal = deliveredJobs.reduce((sum, job) => {
+        const split = splitAmounts(job);
+        return sum + (split.hasSplit ? split.serviceCharge : 0);
+      }, 0);
+      const sparesAmountTotal = deliveredJobs.reduce((sum, job) => {
+        const split = splitAmounts(job);
+        return sum + (split.hasSplit ? split.sparesAmount : 0);
+      }, 0);
+      const splitJobCount = deliveredJobs.reduce(
+        (sum, job) => sum + (splitAmounts(job).hasSplit ? 1 : 0),
         0
       );
 
@@ -289,6 +298,7 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
         totalCollection,
         serviceChargeTotal,
         sparesAmountTotal,
+        splitJobCount,
       };
     })
     .sort((a, b) => {
@@ -311,6 +321,7 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       totalCollection: acc.totalCollection + row.totalCollection,
       serviceChargeTotal: acc.serviceChargeTotal + row.serviceChargeTotal,
       sparesAmountTotal: acc.sparesAmountTotal + row.sparesAmountTotal,
+      splitJobCount: acc.splitJobCount + row.splitJobCount,
     }),
     {
       received: 0,
@@ -324,6 +335,7 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
       totalCollection: 0,
       serviceChargeTotal: 0,
       sparesAmountTotal: 0,
+      splitJobCount: 0,
     }
   );
 
@@ -362,6 +374,7 @@ async function buildBrandApplianceReports(
       totalCollection: split.totalCollection,
       serviceChargeTotal: split.serviceChargeTotal,
       sparesAmountTotal: split.sparesAmountTotal,
+      splitJobCount: split.splitJobCount,
     };
   });
 
@@ -374,6 +387,7 @@ async function buildBrandApplianceReports(
       totalCollection: split.totalCollection,
       serviceChargeTotal: split.serviceChargeTotal,
       sparesAmountTotal: split.sparesAmountTotal,
+      splitJobCount: split.splitJobCount,
     };
   });
 
@@ -392,7 +406,7 @@ export async function GET(request: NextRequest) {
     "summary") as ReportSection;
   const { start, end } = getPeriodRange(period);
 
-  const cacheKey = `reports:v8:${section}:${period}`;
+  const cacheKey = `reports:v9:${section}:${period}`;
   const cached = getCached<unknown>(cacheKey);
   if (cached) {
     return NextResponse.json(cached);

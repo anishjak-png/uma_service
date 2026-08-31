@@ -289,25 +289,9 @@ export default function JobDetailPage() {
     const data = await jobRes.json();
     setJob(data);
     setRemarks(data.remarks ?? "");
-    setReadyServiceCharge(
-      amountInputValue(
-        data.serviceCharge != null
-          ? data.serviceCharge
-          : data.sparesAmount == null
-            ? data.serviceAmount
-            : null
-      )
-    );
+    setReadyServiceCharge(amountInputValue(data.serviceCharge));
     setReadySparesAmount(amountInputValue(data.sparesAmount));
-    setEditServiceCharge(
-      amountInputValue(
-        data.serviceCharge != null
-          ? data.serviceCharge
-          : data.sparesAmount == null
-            ? data.serviceAmount
-            : null
-      )
-    );
+    setEditServiceCharge(amountInputValue(data.serviceCharge));
     setEditSparesAmount(amountInputValue(data.sparesAmount));
     setEditCompletedById(data.completedByTechnician?.id ?? "");
     setEditAssigneeId(data.assignedTechnician?.id ?? "");
@@ -446,15 +430,7 @@ export default function JobDetailPage() {
           job?.assignedTechnician?.id ??
           ""
       );
-      setReadyServiceCharge(
-        amountInputValue(
-          job?.serviceCharge != null
-            ? job.serviceCharge
-            : job?.sparesAmount == null
-              ? job?.serviceAmount
-              : null
-        )
-      );
+      setReadyServiceCharge(amountInputValue(job?.serviceCharge));
       setReadySparesAmount(amountInputValue(job?.sparesAmount));
       setShowReadyForm(true);
       return;
@@ -477,8 +453,8 @@ export default function JobDetailPage() {
       status: "Return",
       note,
       serviceAmount: 0,
-      serviceCharge: 0,
-      sparesAmount: 0,
+      serviceCharge: null,
+      sparesAmount: null,
     });
   }
 
@@ -805,11 +781,15 @@ export default function JobDetailPage() {
             {showFinancials && job.serviceAmount != null && (
               <span className="ml-auto text-right text-sm font-semibold text-emerald-700">
                 {formatCurrency(job.serviceAmount)}
-                {isAdmin && (
-                  <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
-                    {formatBillSplitLine(job)}
-                  </span>
-                )}
+                {isAdmin &&
+                  (() => {
+                    const splitLine = formatBillSplitLine(job);
+                    return splitLine ? (
+                      <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+                        {splitLine}
+                      </span>
+                    ) : null;
+                  })()}
               </span>
             )}
           </div>
@@ -1508,15 +1488,7 @@ export default function JobDetailPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setEditServiceCharge(
-                    amountInputValue(
-                      job.serviceCharge != null
-                        ? job.serviceCharge
-                        : job.sparesAmount == null
-                          ? job.serviceAmount
-                          : null
-                    )
-                  );
+                  setEditServiceCharge(amountInputValue(job.serviceCharge));
                   setEditSparesAmount(amountInputValue(job.sparesAmount));
                   setShowAmountEdit(true);
                 }}

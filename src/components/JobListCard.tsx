@@ -154,15 +154,19 @@ export function JobListCard({
               <p className="text-xs font-semibold text-emerald-700">
                 {formatCurrency(serviceAmount)}
               </p>
-              {showBillSplit && (
-                <p className="text-[10px] font-normal text-slate-500">
-                  {formatBillSplitLine({
+              {showBillSplit &&
+                (() => {
+                  const splitLine = formatBillSplitLine({
                     serviceAmount,
                     serviceCharge,
                     sparesAmount,
-                  })}
-                </p>
-              )}
+                  });
+                  return splitLine ? (
+                    <p className="text-[10px] font-normal text-slate-500">
+                      {splitLine}
+                    </p>
+                  ) : null;
+                })()}
             </div>
           )}
         </Link>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { resolveBillSplit } from "@/lib/currency";
+import { parseServiceAmount, resolveBillSplit } from "@/lib/currency";
 import { getJobPatchSelect } from "@/lib/job-selects";
 import {
   accessoryNames,
@@ -194,21 +194,38 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             );
           }
         } else {
-          const parsed =
+          if (
             body.serviceCharge !== undefined ||
-            body.sparesAmount !== undefined ||
-            body.serviceAmount !== undefined
-              ? resolveBillSplit(body)
-              : { serviceCharge: 0, sparesAmount: 0, serviceAmount: 0 };
-          if (!parsed) {
-            return NextResponse.json(
-              { error: "Invalid service or spares amount" },
-              { status: 400 }
-            );
+            body.sparesAmount !== undefined
+          ) {
+            const parsed = resolveBillSplit(body);
+            if (!parsed) {
+              return NextResponse.json(
+                { error: "Invalid service or spares amount" },
+                { status: 400 }
+              );
+            }
+            data.serviceCharge = parsed.serviceCharge;
+            data.sparesAmount = parsed.sparesAmount;
+            data.serviceAmount = parsed.serviceAmount;
+          } else if (body.serviceAmount !== undefined) {
+            const amount =
+              body.serviceAmount === ""
+                ? 0
+                : parseServiceAmount(body.serviceAmount);
+            if (amount == null) {
+              return NextResponse.json(
+                { error: "Invalid service amount" },
+                { status: 400 }
+              );
+            }
+            // Legacy total-only: do not invent serviceCharge/sparesAmount
+            data.serviceAmount = amount;
+          } else {
+            data.serviceCharge = 0;
+            data.sparesAmount = 0;
+            data.serviceAmount = 0;
           }
-          data.serviceCharge = parsed.serviceCharge;
-          data.sparesAmount = parsed.sparesAmount;
-          data.serviceAmount = parsed.serviceAmount;
         }
         if (!existing.readyAt) {
           data.readyAt = new Date();
@@ -270,8 +287,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
 
         data.serviceAmount = 0;
-        data.serviceCharge = 0;
-        data.sparesAmount = 0;
+        data.serviceCharge = null;
+        data.sparesAmount = null;
         data.status = "Return";
         statusChange = "Return";
 
@@ -309,16 +326,33 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       !body.status &&
       canEditServiceAmount(session.role)
     ) {
-      const parsed = resolveBillSplit(body);
-      if (!parsed) {
-        return NextResponse.json(
-          { error: "Invalid service or spares amount" },
-          { status: 400 }
-        );
+      if (
+        body.serviceCharge !== undefined ||
+        body.sparesAmount !== undefined
+      ) {
+        const parsed = resolveBillSplit(body);
+        if (!parsed) {
+          return NextResponse.json(
+            { error: "Invalid service or spares amount" },
+            { status: 400 }
+          );
+        }
+        data.serviceCharge = parsed.serviceCharge;
+        data.sparesAmount = parsed.sparesAmount;
+        data.serviceAmount = parsed.serviceAmount;
+      } else {
+        const amount =
+          body.serviceAmount === ""
+            ? 0
+            : parseServiceAmount(body.serviceAmount);
+        if (amount == null) {
+          return NextResponse.json(
+            { error: "Invalid service amount" },
+            { status: 400 }
+          );
+        }
+        data.serviceAmount = amount;
       }
-      data.serviceCharge = parsed.serviceCharge;
-      data.sparesAmount = parsed.sparesAmount;
-      data.serviceAmount = parsed.serviceAmount;
     }
 
     if (body.remarks != null) {

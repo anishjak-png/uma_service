@@ -1113,6 +1113,7 @@ function ReportsTab() {
       totalCollection: number;
       serviceChargeTotal: number;
       sparesAmountTotal: number;
+      splitJobCount: number;
       jobsReturned: number;
       jobsDeliveredReady: number;
       jobsDeliveredReturn: number;
@@ -1124,6 +1125,7 @@ function ReportsTab() {
       readyLiveAmount: number;
       readyLiveServiceCharge: number;
       readyLiveSparesAmount: number;
+      readyLiveSplitJobCount: number;
     };
     pendingAging: { over3Days: number; over7Days: number; over15Days: number };
     undeliveredAging: { over3Days: number; over7Days: number; over15Days: number };
@@ -1144,6 +1146,7 @@ function ReportsTab() {
       totalCollection: number;
       serviceChargeTotal: number;
       sparesAmountTotal: number;
+      splitJobCount: number;
     }>;
     totals: {
       received: number;
@@ -1157,6 +1160,7 @@ function ReportsTab() {
       totalCollection: number;
       serviceChargeTotal: number;
       sparesAmountTotal: number;
+      splitJobCount: number;
     };
   } | null>(null);
   const [brandData, setBrandData] = useState<{
@@ -1166,6 +1170,7 @@ function ReportsTab() {
       totalCollection: number;
       serviceChargeTotal: number;
       sparesAmountTotal: number;
+      splitJobCount: number;
     }>;
     brandReports: Array<{
       brand: string;
@@ -1173,6 +1178,7 @@ function ReportsTab() {
       totalCollection: number;
       serviceChargeTotal: number;
       sparesAmountTotal: number;
+      splitJobCount: number;
     }>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1348,10 +1354,12 @@ function ReportsTab() {
                 value={formatRs(summary.summary.totalCollection)}
                 subtext={
                   <>
-                    <p>
-                      Service {formatRs(summary.summary.serviceChargeTotal)} ·
-                      Spares {formatRs(summary.summary.sparesAmountTotal)}
-                    </p>
+                    {summary.summary.splitJobCount > 0 ? (
+                      <p>
+                        Service {formatRs(summary.summary.serviceChargeTotal)} ·
+                        Spares {formatRs(summary.summary.sparesAmountTotal)}
+                      </p>
+                    ) : null}
                     <p>
                       {summary.summary.jobsDeliveredReady} repair ·{" "}
                       {summary.summary.jobsDeliveredReturn} return
@@ -1391,7 +1399,11 @@ function ReportsTab() {
               <StatCard
                 label="Ready"
                 value={summary.summary.readyLive}
-                subtext={`${formatRs(summary.summary.readyLiveAmount)} · Svc ${formatRs(summary.summary.readyLiveServiceCharge)} · Spares ${formatRs(summary.summary.readyLiveSparesAmount)}`}
+                subtext={
+                  summary.summary.readyLiveSplitJobCount > 0
+                    ? `${formatRs(summary.summary.readyLiveAmount)} · Svc ${formatRs(summary.summary.readyLiveServiceCharge)} · Spares ${formatRs(summary.summary.readyLiveSparesAmount)}`
+                    : formatRs(summary.summary.readyLiveAmount)
+                }
                 href={reportJobsHref({ status: "Ready" })}
                 valueClassName="text-emerald-700"
               />
@@ -1624,10 +1636,12 @@ function ReportsTab() {
                             value={formatRs(row.totalCollection)}
                           />
                         </div>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
-                          {formatRs(row.sparesAmountTotal)}
-                        </p>
+                        {row.splitJobCount > 0 ? (
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
+                            {formatRs(row.sparesAmountTotal)}
+                          </p>
+                        ) : null}
                       </div>
                     </CardContent>
                   </Card>
@@ -1666,10 +1680,12 @@ function ReportsTab() {
                         <span className="text-slate-700">{row.applianceType}</span>
                         <span className="text-right text-slate-900">
                           {row.totalJobs} jobs · {formatRs(row.totalCollection)}
-                          <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
-                            Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
-                            {formatRs(row.sparesAmountTotal)}
-                          </span>
+                          {row.splitJobCount > 0 ? (
+                            <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                              Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
+                              {formatRs(row.sparesAmountTotal)}
+                            </span>
+                          ) : null}
                         </span>
                       </Link>
                     ))
@@ -1699,10 +1715,12 @@ function ReportsTab() {
                         <span className="text-slate-700">{row.brand}</span>
                         <span className="text-right font-semibold text-slate-900">
                           {row.totalJobs} · {formatRs(row.totalCollection)}
-                          <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
-                            Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
-                            {formatRs(row.sparesAmountTotal)}
-                          </span>
+                          {row.splitJobCount > 0 ? (
+                            <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                              Service {formatRs(row.serviceChargeTotal)} · Spares{" "}
+                              {formatRs(row.sparesAmountTotal)}
+                            </span>
+                          ) : null}
                         </span>
                       </Link>
                     ))

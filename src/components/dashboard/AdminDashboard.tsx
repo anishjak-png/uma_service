@@ -15,12 +15,15 @@ type AdminDashboardProps = {
     todayCollection: number;
     todayServiceCharge: number;
     todaySparesAmount: number;
+    todaySplitJobCount: number;
     monthlyCollection: number;
     monthlyServiceCharge: number;
     monthlySparesAmount: number;
+    monthlySplitJobCount: number;
     pendingCollection: number;
     pendingServiceCharge: number;
     pendingSparesAmount: number;
+    pendingSplitJobCount: number;
     readyForPickup: Array<{
       id: string;
       jobNumber: string;
@@ -46,19 +49,31 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
         <StatCard
           label="Today's Collection"
           value={formatCurrency(data.todayCollection)}
-          subtext={`Service ${formatCurrency(data.todayServiceCharge)} · Spares ${formatCurrency(data.todaySparesAmount)}`}
+          subtext={
+            data.todaySplitJobCount > 0
+              ? `Service ${formatCurrency(data.todayServiceCharge)} · Spares ${formatCurrency(data.todaySparesAmount)}`
+              : undefined
+          }
           valueClassName="text-emerald-800"
         />
         <StatCard
           label="Monthly Collection"
           value={formatCurrency(data.monthlyCollection)}
-          subtext={`Service ${formatCurrency(data.monthlyServiceCharge)} · Spares ${formatCurrency(data.monthlySparesAmount)}`}
+          subtext={
+            data.monthlySplitJobCount > 0
+              ? `Service ${formatCurrency(data.monthlyServiceCharge)} · Spares ${formatCurrency(data.monthlySparesAmount)}`
+              : undefined
+          }
           valueClassName="text-emerald-800"
         />
         <StatCard
           label="Pending Collection"
           value={formatCurrency(data.pendingCollection)}
-          subtext={`Service ${formatCurrency(data.pendingServiceCharge)} · Spares ${formatCurrency(data.pendingSparesAmount)} · Ready, not delivered`}
+          subtext={
+            data.pendingSplitJobCount > 0
+              ? `Service ${formatCurrency(data.pendingServiceCharge)} · Spares ${formatCurrency(data.pendingSparesAmount)} · Ready, not delivered`
+              : "Ready, not delivered"
+          }
           valueClassName="text-amber-800"
         />
       </div>

@@ -3,32 +3,52 @@ export function formatCurrency(amount: number | null | undefined): string {
   return `Rs.${amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
-/** Legacy jobs (no split fields) count the full total as service charge. */
+/** True only when Ready/edit actually stored a bill split (not legacy total-only jobs). */
+export function hasStoredBillSplit(job: {
+  serviceCharge?: number | null;
+  sparesAmount?: number | null;
+}): boolean {
+  return job.serviceCharge != null || job.sparesAmount != null;
+}
+
+/**
+ * Stored bill parts. Legacy jobs (both split fields null) have hasSplit=false —
+ * do not invent Service/Spares from the total.
+ */
 export function resolveStoredBillSplit(job: {
   serviceAmount?: number | null;
   serviceCharge?: number | null;
   sparesAmount?: number | null;
-}): { serviceCharge: number; sparesAmount: number; serviceAmount: number } {
+}): {
+  serviceCharge: number;
+  sparesAmount: number;
+  serviceAmount: number;
+  hasSplit: boolean;
+} {
   const serviceAmount = job.serviceAmount ?? 0;
-  if (job.serviceCharge != null || job.sparesAmount != null) {
+  if (hasStoredBillSplit(job)) {
     return {
       serviceCharge: job.serviceCharge ?? 0,
       sparesAmount: job.sparesAmount ?? 0,
       serviceAmount,
+      hasSplit: true,
     };
   }
   return {
-    serviceCharge: serviceAmount,
+    serviceCharge: 0,
     sparesAmount: 0,
     serviceAmount,
+    hasSplit: false,
   };
 }
 
+/** Admin-facing split line, or null for legacy total-only jobs. */
 export function formatBillSplitLine(job: {
   serviceAmount?: number | null;
   serviceCharge?: number | null;
   sparesAmount?: number | null;
-}): string {
+}): string | null {
+  if (!hasStoredBillSplit(job)) return null;
   const { serviceCharge, sparesAmount } = resolveStoredBillSplit(job);
   return `Service ${formatCurrency(serviceCharge)} · Spares ${formatCurrency(sparesAmount)}`;
 }
@@ -43,17 +63,26 @@ export function sumBillSplits(
   totalCollection: number;
   serviceChargeTotal: number;
   sparesAmountTotal: number;
+  splitJobCount: number;
 } {
   return jobs.reduce(
     (acc, job) => {
       const split = resolveStoredBillSplit(job);
       return {
         totalCollection: acc.totalCollection + split.serviceAmount,
-        serviceChargeTotal: acc.serviceChargeTotal + split.serviceCharge,
-        sparesAmountTotal: acc.sparesAmountTotal + split.sparesAmount,
+        serviceChargeTotal:
+          acc.serviceChargeTotal + (split.hasSplit ? split.serviceCharge : 0),
+        sparesAmountTotal:
+          acc.sparesAmountTotal + (split.hasSplit ? split.sparesAmount : 0),
+        splitJobCount: acc.splitJobCount + (split.hasSplit ? 1 : 0),
       };
     },
-    { totalCollection: 0, serviceChargeTotal: 0, sparesAmountTotal: 0 }
+    {
+      totalCollection: 0,
+      serviceChargeTotal: 0,
+      sparesAmountTotal: 0,
+      splitJobCount: 0,
+    }
   );
 }
 
@@ -98,6 +127,7 @@ export function resolveBillSplit(body: {
     const amount =
       body.serviceAmount === "" ? 0 : parseServiceAmount(body.serviceAmount);
     if (amount == null) return null;
+    // Legacy single-amount clients: store total only — do not invent a split.
     return { serviceCharge: amount, sparesAmount: 0, serviceAmount: amount };
   }
 
