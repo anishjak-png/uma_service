@@ -10,18 +10,32 @@ import {
   parseAccessories,
   parseOptionalDateInput,
   serializeAccessories,
+  normalizeMobile,
 } from "@/lib/jobs";
 import { validateAccessoriesForAppliance } from "@/lib/lookups";
 import {
   canDeliverJob,
   canEditCompletedBy,
+  canEditCustomerContact,
   canEditDeliveredJob,
   canEditServiceAmount,
   canReopenDeliveredJob,
   isServiceAmountLocked,
 } from "@/lib/auth";
+import { applyJobCustomerCorrection } from "@/lib/customer-contact";
 import { getSession } from "@/lib/session";
 import { dispatchNotificationEventAsync } from "@/lib/notifications/events";
+import {
+  inferEventTypeFromJobStatus,
+  sendWhatsAppNotification,
+} from "@/lib/notifications/whatsapp-service";
+
+function queueWhatsAppForCorrectedMobile(jobId: string, jobStatus: string) {
+  const eventType = inferEventTypeFromJobStatus(jobStatus) ?? "JOB_CREATED";
+  after(async () => {
+    await sendWhatsAppNotification({ jobId, eventType, manual: true });
+  });
+}
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -59,6 +73,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const existing = await prisma.jobCard.findFirst({
       where: { OR: [{ id }, { jobNumber: id }] },
+      include: { customer: true },
     });
 
     if (!existing) {
@@ -89,6 +104,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const data: Record<string, unknown> = {};
     const changedBy = staffActorName(session);
+    let customerMobileCorrected = false;
 
     let statusChange: JobStatus | null = null;
     let statusNote: string | undefined;
@@ -447,6 +463,39 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.accessories = serializeAccessories(list);
     }
 
+    if (body.customerName !== undefined || body.customerMobile !== undefined) {
+      if (!canEditCustomerContact(session.role)) {
+        return NextResponse.json(
+          { error: "Not allowed to edit customer details" },
+          { status: 403 }
+        );
+      }
+      const result = await applyJobCustomerCorrection({
+        jobId: existing.id,
+        currentCustomerId: existing.customerId,
+        name:
+          body.customerName !== undefined
+            ? String(body.customerName)
+            : existing.customer.name ?? "",
+        mobile:
+          body.customerMobile !== undefined
+            ? String(body.customerMobile)
+            : existing.customer.mobile,
+      });
+      if ("error" in result) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: result.status }
+        );
+      }
+      if (result.customer.id !== existing.customerId) {
+        data.customerId = result.customer.id;
+      }
+      customerMobileCorrected =
+        normalizeMobile(existing.customer.mobile) !==
+        normalizeMobile(result.customer.mobile);
+    }
+
     const jobId = existing.id;
 
     if (statusChange) {
@@ -466,6 +515,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }),
       ]);
 
+      const statusSendsWhatsApp =
+        (statusChange === "Ready" && !existing.readyAt) ||
+        statusChange === "Return";
+
       if (statusChange === "Ready" && !existing.readyAt) {
         after(async () => {
           await dispatchNotificationEventAsync({ type: "JOB_READY", jobId });
@@ -476,8 +529,25 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           await dispatchNotificationEventAsync({ type: "JOB_RETURN", jobId });
         });
       }
+      if (customerMobileCorrected && !statusSendsWhatsApp) {
+        queueWhatsAppForCorrectedMobile(jobId, existing.status);
+      }
 
       return NextResponse.json({ ...job, statusHistoryEntry });
+    }
+
+    if (Object.keys(data).length === 0) {
+      const job = await prisma.jobCard.findUnique({
+        where: { id: jobId },
+        select: getJobPatchSelect(),
+      });
+      if (!job) {
+        return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      }
+      if (customerMobileCorrected) {
+        queueWhatsAppForCorrectedMobile(jobId, existing.status);
+      }
+      return NextResponse.json(job);
     }
 
     const job = await prisma.jobCard.update({
@@ -485,6 +555,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data,
       select: getJobPatchSelect(),
     });
+
+    if (customerMobileCorrected) {
+      queueWhatsAppForCorrectedMobile(jobId, existing.status);
+    }
 
     return NextResponse.json(job);
   } catch (error) {

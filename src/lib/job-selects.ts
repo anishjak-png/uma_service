@@ -50,6 +50,14 @@ const jobPatchSelectBase = {
   completedByOutsource: { select: { id: true, name: true } },
   accessories: true,
   outsourcedAt: true,
+  customer: {
+    select: {
+      id: true,
+      mobile: true,
+      name: true,
+      allowWhatsappNotifications: true,
+    },
+  },
 } satisfies Prisma.JobCardSelect;
 
 const jobPatchSelectWarranty = {

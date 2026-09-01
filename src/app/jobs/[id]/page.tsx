@@ -111,6 +111,10 @@ function mergeJobPatch(prev: JobDetail, patch: JobPatchResponse): JobDetail {
       fields.completedByOutsource !== undefined
         ? fields.completedByOutsource
         : prev.completedByOutsource,
+    customer:
+      fields.customer !== undefined
+        ? { ...prev.customer, ...fields.customer }
+        : prev.customer,
     statusHistory: statusHistoryEntry
       ? [statusHistoryEntry, ...prev.statusHistory]
       : prev.statusHistory,
@@ -253,6 +257,9 @@ export default function JobDetailPage() {
   const [otherAccessory, setOtherAccessory] = useState("");
   const [otherAccessoryQty, setOtherAccessoryQty] = useState(1);
   const [editingAccessories, setEditingAccessories] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [editCustomerName, setEditCustomerName] = useState("");
+  const [editCustomerMobile, setEditCustomerMobile] = useState("");
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState("");
   const [warrantyPhotoUploading, setWarrantyPhotoUploading] = useState(false);
@@ -393,6 +400,7 @@ export default function JobDetailPage() {
       setShowOutsourceForm(false);
       setShowConvertWarrantyForm(false);
       setShowAssigneeEdit(false);
+      setEditingCustomer(false);
       if (data.warrantyPurchaseDate !== undefined) {
         setPurchaseDateEdit(toDateInputValue(data.warrantyPurchaseDate));
         setEditingPurchaseDate(false);
@@ -499,6 +507,31 @@ export default function JobDetailPage() {
   function setQty(name: string, qty: number) {
     const nextQty = Number.isFinite(qty) ? Math.max(1, Math.min(999, Math.floor(qty))) : 1;
     setAccessoryQty((prev) => ({ ...prev, [name]: nextQty }));
+  }
+
+  function lookupEditCustomer(value: string) {
+    const digits = value.replace(/\D/g, "").slice(-10);
+    if (digits.length !== 10) return;
+    void fetch(`/api/customers/lookup?mobile=${digits}`)
+      .then((res) => res.json())
+      .then((data: { found?: boolean; name?: string | null }) => {
+        if (data.found && data.name) setEditCustomerName(data.name);
+      })
+      .catch(() => undefined);
+  }
+
+  async function saveCustomer() {
+    const name = editCustomerName.trim();
+    const mobile = editCustomerMobile.replace(/\D/g, "").slice(-10);
+    if (!name) {
+      alert("Customer name required");
+      return;
+    }
+    if (mobile.length !== 10) {
+      alert("Valid 10-digit mobile required");
+      return;
+    }
+    await updateJob({ customerName: name, customerMobile: mobile });
   }
 
   async function saveAccessories() {
@@ -738,6 +771,8 @@ export default function JobDetailPage() {
   const canAdminEditAmount = isAdmin && job.readyAt != null && !isLocked;
   const canEditAssignee =
     isStaff && !isLocked && !job.isWarranty && job.status !== "Outsourced";
+  const canEditCustomer =
+    (isStaff || role === "technician") && !isLocked;
 
   const accessories = parseAccessories(job.accessories);
   const productLine = [job.brand, job.applianceType, job.model]
@@ -1054,35 +1089,114 @@ export default function JobDetailPage() {
         </CompactCard>
 
         <CompactCard title="Details">
-          <CompactRow label="Customer">
-            {job.customer.name ?? "—"}
-          </CompactRow>
-          <CompactRow label="Mobile">
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <span className="truncate">{formatMobileDisplay(job.customer.mobile)}</span>
-              {shouldShowDeliveryContact(job.status) ? (
-                <DeliveryCallButton
-                  jobId={job.id}
-                  jobNumber={job.jobNumber}
-                  customerName={job.customer.name}
-                  mobile={job.customer.mobile}
-                  onLogged={(result) =>
-                    setJob((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            deliveryContactStatus: result.deliveryContactStatus,
-                            expectedDeliveryAt: result.expectedDeliveryAt,
-                          }
-                        : prev
-                    )
-                  }
+          {canEditCustomer && editingCustomer ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm leading-snug">
+                <span className="w-[5.5rem] shrink-0 text-xs font-medium text-slate-500">
+                  Name
+                </span>
+                <input
+                  type="text"
+                  value={editCustomerName}
+                  onChange={(e) => setEditCustomerName(e.target.value)}
+                  placeholder="Customer name"
+                  autoComplete="name"
+                  className="flex h-9 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
-              ) : (
-                <CallCustomerButton mobile={job.customer.mobile} />
-              )}
-            </span>
-          </CompactRow>
+              </div>
+              <div className="flex items-center gap-2 text-sm leading-snug">
+                <span className="w-[5.5rem] shrink-0 text-xs font-medium text-slate-500">
+                  Mobile
+                </span>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={editCustomerMobile}
+                  onChange={(e) => {
+                    setEditCustomerMobile(e.target.value);
+                    lookupEditCustomer(e.target.value);
+                  }}
+                  placeholder="10-digit mobile"
+                  autoComplete="tel"
+                  className="flex h-9 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                />
+              </div>
+              <div className="flex gap-1.5 pl-[5.5rem]">
+                <button
+                  type="button"
+                  onClick={saveCustomer}
+                  disabled={saving}
+                  className="flex-1 rounded-md bg-emerald-600 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditCustomerName(job.customer.name ?? "");
+                    setEditCustomerMobile(job.customer.mobile);
+                    setEditingCustomer(false);
+                  }}
+                  className="flex-1 rounded-md border border-slate-300 py-1.5 text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+              <p className="pl-[5.5rem] text-[10px] leading-snug text-slate-500">
+                Changing the mobile sends WhatsApp to the new number.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-sm leading-snug">
+                <span className="w-[5.5rem] shrink-0 text-xs font-medium text-slate-500">
+                  Customer
+                </span>
+                <span className="min-w-0 flex-1 truncate text-slate-900">
+                  {job.customer.name ?? "—"}
+                </span>
+                {canEditCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditCustomerName(job.customer.name ?? "");
+                      setEditCustomerMobile(job.customer.mobile);
+                      setEditingCustomer(true);
+                    }}
+                    className="shrink-0 text-xs font-medium text-emerald-700 hover:underline"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+              <CompactRow label="Mobile">
+                <span className="inline-flex min-w-0 items-center gap-1">
+                  <span className="truncate">{formatMobileDisplay(job.customer.mobile)}</span>
+                  {shouldShowDeliveryContact(job.status) ? (
+                    <DeliveryCallButton
+                      jobId={job.id}
+                      jobNumber={job.jobNumber}
+                      customerName={job.customer.name}
+                      mobile={job.customer.mobile}
+                      onLogged={(result) =>
+                        setJob((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                deliveryContactStatus: result.deliveryContactStatus,
+                                expectedDeliveryAt: result.expectedDeliveryAt,
+                              }
+                            : prev
+                        )
+                      }
+                    />
+                  ) : (
+                    <CallCustomerButton mobile={job.customer.mobile} />
+                  )}
+                </span>
+              </CompactRow>
+            </>
+          )}
           <CompactRow label="Product">{productLine || "—"}</CompactRow>
 
           <div className="flex items-start gap-2 text-sm leading-snug">
