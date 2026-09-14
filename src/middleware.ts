@@ -80,7 +80,8 @@ export async function middleware(request: NextRequest) {
   if (session.role === "technician") {
     const blocked =
       pathname.startsWith("/admin") ||
-      pathname.startsWith("/dashboard");
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/slip");
     if (blocked) {
       return NextResponse.redirect(new URL("/jobs/pending?scope=my", request.url));
     }

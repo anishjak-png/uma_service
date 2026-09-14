@@ -117,12 +117,22 @@ export function AppNav() {
                 <p className="truncate text-xs text-emerald-200">{userSubtitle}</p>
               )}
             </Link>
-            <button
-              onClick={logout}
-              className="shrink-0 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-800 hover:text-white"
-            >
-              Logout
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              {(role === "reception" || role === "admin") && (
+                <Link
+                  href={role === "admin" ? "/admin?tab=slip" : "/slip"}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-emerald-200/80 transition-colors hover:bg-emerald-800 hover:text-white"
+                >
+                  Slip
+                </Link>
+              )}
+              <button
+                onClick={logout}
+                className="rounded-md px-2.5 py-1 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-800 hover:text-white"
+              >
+                Logout
+              </button>
+            </div>
           </div>
           {showUniversalSearch && (
             <form onSubmit={handleUniversalSearch} className="flex gap-1.5">

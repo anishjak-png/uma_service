@@ -13,6 +13,7 @@ const tabs = [
   { id: "inbox", label: "Inbox" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "spare-parts", label: "Spare parts" },
+  { id: "slip", label: "Slip" },
 ] as const;
 
 export type AdminSettingsTab = (typeof tabs)[number]["id"];

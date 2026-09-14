@@ -16,6 +16,8 @@ import { DevicesTab } from "./DevicesTab";
 import { OutsourceTab } from "./OutsourceTab";
 import { SparePartsTab } from "@/modules/spare-parts/components/SparePartsTab";
 import { isSparePartsEnabled } from "@/modules/spare-parts/enabled";
+import { SlipServiceEntry } from "@/components/SlipServiceEntry";
+import { SlipServiceReport } from "@/components/SlipServiceReport";
 import { reportJobsHref } from "@/lib/report-links";
 import { periodLabel, type ReportPeriod } from "@/lib/reports";
 
@@ -65,7 +67,8 @@ export default function AdminContent() {
     tabFromUrl === "customers" ||
     tabFromUrl === "inbox" ||
     tabFromUrl === "whatsapp" ||
-    tabFromUrl === "spare-parts"
+    tabFromUrl === "spare-parts" ||
+    tabFromUrl === "slip"
       ? tabFromUrl
       : "devices";
 
@@ -99,6 +102,7 @@ export default function AdminContent() {
       requested === "inbox" ||
       requested === "whatsapp" ||
       requested === "spare-parts" ||
+      requested === "slip" ||
       requested === "reports"
     ) {
       setTab(requested);
@@ -154,6 +158,7 @@ export default function AdminContent() {
       )}
       {tab === "whatsapp" && <WhatsAppAutomationTab />}
       {tab === "spare-parts" && isSparePartsEnabled() && <SparePartsTab />}
+      {tab === "slip" && <SlipServiceEntry />}
       {tab === "reports" && <ReportsTab />}
     </AppShell>
   );
@@ -1096,7 +1101,7 @@ function TechStaffBarChart({
 function ReportsTab() {
   const [period, setPeriod] = useState<ReportPeriod>("today");
   const [reportSection, setReportSection] = useState<
-    "summary" | "technicians" | "brands-appliances"
+    "summary" | "technicians" | "brands-appliances" | "slip"
   >("summary");
   const [summary, setSummary] = useState<{
     summary: {
@@ -1248,6 +1253,7 @@ function ReportsTab() {
 
   return (
     <div className="space-y-4">
+      {reportSection !== "slip" && (
       <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1">
         {(
           [
@@ -1271,6 +1277,7 @@ function ReportsTab() {
           </button>
         ))}
       </div>
+      )}
 
       <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
         {(
@@ -1278,13 +1285,14 @@ function ReportsTab() {
             { id: "summary", label: "Overview" },
             { id: "technicians", label: "Technicians" },
             { id: "brands-appliances", label: "Brands" },
+            { id: "slip", label: "Slip" },
           ] as const
         ).map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => setReportSection(s.id)}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+            className={`flex-1 rounded-md px-2 py-2 text-xs font-medium sm:px-3 sm:text-sm ${
               reportSection === s.id
                 ? "bg-emerald-600 text-white"
                 : "text-slate-600 hover:bg-slate-50"
@@ -1295,13 +1303,15 @@ function ReportsTab() {
         ))}
       </div>
 
-      {error && (
+      {error && reportSection !== "slip" && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
       )}
 
       {loading && reportSection === "summary" && !summary && !error && (
         <p className="text-center text-slate-500">Loading reports…</p>
       )}
+
+      {reportSection === "slip" && <SlipServiceReport />}
 
       {reportSection === "summary" && summary && (
         <>

@@ -375,3 +375,15 @@ model WhatsAppMessage {
 
   @@index([conversationId, createdAt])
 }
+
+/** Daily slip-book service total. Separate from JobCard.serviceAmount. */
+model SlipServiceValue {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  amount    Float
+  enteredBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}

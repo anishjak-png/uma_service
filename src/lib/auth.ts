@@ -95,6 +95,22 @@ export async function requireSparePartsAccess() {
   return session;
 }
 
+export function canEnterSlipService(role: StaffRole) {
+  return role === "reception" || role === "admin";
+}
+
+export async function requireSlipServiceAccess() {
+  const session = await getSession();
+  if (
+    !session.isLoggedIn ||
+    !canEnterSlipService(session.role) ||
+    !isDeviceApproved(session)
+  ) {
+    return null;
+  }
+  return session;
+}
+
 /** Amount is locked once the job has been marked Ready at least once. */
 export function isServiceAmountLocked(job: { readyAt: Date | null }) {
   return job.readyAt != null;
