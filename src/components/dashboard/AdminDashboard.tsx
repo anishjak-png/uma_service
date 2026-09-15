@@ -54,6 +54,7 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
               ? `Service ${formatCurrency(data.todayServiceCharge)} · Spares ${formatCurrency(data.todaySparesAmount)}`
               : undefined
           }
+          href="/jobs/search?deliveredPeriod=today"
           valueClassName="text-emerald-800"
         />
         <StatCard
@@ -64,6 +65,7 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
               ? `Service ${formatCurrency(data.monthlyServiceCharge)} · Spares ${formatCurrency(data.monthlySparesAmount)}`
               : undefined
           }
+          href="/jobs/search?deliveredPeriod=month"
           valueClassName="text-emerald-800"
         />
         <StatCard
@@ -74,6 +76,7 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
               ? `Service ${formatCurrency(data.pendingServiceCharge)} · Spares ${formatCurrency(data.pendingSparesAmount)} · Ready, not delivered`
               : "Ready, not delivered"
           }
+          href="/jobs/search?status=Ready"
           valueClassName="text-amber-800"
         />
       </div>

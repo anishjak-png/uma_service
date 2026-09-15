@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/components/AuthProvider";
 import { formatCurrency } from "@/lib/currency";
 import { formatSlipDay } from "@/lib/slip-service";
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +12,8 @@ type SlipEntry = {
 };
 
 export function SlipServiceEntry() {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [today, setToday] = useState("");
   const [date, setDate] = useState("");
   const [amount, setAmount] = useState("");
@@ -19,6 +22,9 @@ export function SlipServiceEntry() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const existing = entries.find((row) => row.date === date);
+  const canSave = Boolean(date) && (isAdmin || !existing);
 
   const applyAmountForDate = useCallback((nextDate: string, list: SlipEntry[]) => {
     const match = list.find((row) => row.date === nextDate);
@@ -52,10 +58,12 @@ export function SlipServiceEntry() {
   function selectDate(next: string) {
     setDate(next);
     setMessage("");
+    setError("");
     applyAmountForDate(next, entries);
   }
 
   async function save() {
+    if (!canSave) return;
     setSaving(true);
     setError("");
     setMessage("");
@@ -117,23 +125,38 @@ export function SlipServiceEntry() {
               min="0"
               step="1"
               value={amount}
+              readOnly={!canSave}
               onChange={(e) => setAmount(e.target.value)}
               onFocus={(e) => {
+                if (!canSave) return;
                 if (e.target.value === "0") setAmount("");
                 else e.target.select();
               }}
               placeholder="0"
-              className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className={`flex h-10 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                canSave ? "bg-white" : "bg-slate-50 text-slate-600"
+              }`}
             />
           </label>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || !date}
-            className="w-full rounded-md bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
+          {canSave ? (
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || !date}
+              className="w-full rounded-md bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : existing ? "Update" : "Save"}
+            </button>
+          ) : (
+            <p className="rounded-md bg-slate-50 px-2 py-2 text-xs text-slate-600">
+              Already entered for this date. Only admin can edit.
+            </p>
+          )}
+          <p className="text-[10px] leading-snug text-slate-500">
+            {isAdmin
+              ? "One value per day. Reception can enter a new day; only admin can edit a saved day."
+              : "One value per day. Ask admin to change a saved amount."}
+          </p>
           {message && (
             <p className="text-xs font-medium text-emerald-700">{message}</p>
           )}

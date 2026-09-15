@@ -1355,8 +1355,8 @@ function ReportsTab() {
               />
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Created = Delivered + Undelivered + Pending (same period jobs by
-              current status).
+              Collection is by delivery date. Created jobs above are by received
+              date.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <StatCard
@@ -1377,8 +1377,7 @@ function ReportsTab() {
                   </>
                 }
                 href={reportJobsHref({
-                  receivedPeriod: period,
-                  pipeline: "delivered",
+                  deliveredPeriod: period,
                 })}
                 valueClassName="text-emerald-800"
               />
@@ -1387,7 +1386,7 @@ function ReportsTab() {
                 value={summary.summary.jobsReturned}
                 subtext="Return → Delivered only"
                 href={reportJobsHref({
-                  receivedPeriod: period,
+                  deliveredPeriod: period,
                   pipeline: "returned",
                 })}
                 valueClassName="text-orange-700"
@@ -1683,7 +1682,7 @@ function ReportsTab() {
                         key={row.applianceType}
                         href={reportJobsHref({
                           applianceType: row.applianceType,
-                          receivedPeriod: period,
+                          deliveredPeriod: period,
                         })}
                         className="flex justify-between gap-2 rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
                       >
@@ -1718,7 +1717,7 @@ function ReportsTab() {
                         key={row.brand}
                         href={reportJobsHref({
                           brand: row.brand,
-                          receivedPeriod: period,
+                          deliveredPeriod: period,
                         })}
                         className="flex justify-between rounded-md px-2 py-2 transition-colors hover:bg-slate-50"
                       >

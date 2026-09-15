@@ -251,8 +251,10 @@ async function browseJobsResponse(params: {
   const jobs = await prisma.jobCard.findMany({
     where,
     select: getJobListSelect(),
-    orderBy: { receivedAt: "desc" },
-    take: 100,
+    orderBy: deliveredPeriod
+      ? { deliveredAt: "desc" }
+      : { receivedAt: "desc" },
+    take: deliveredPeriod ? 500 : 100,
   });
 
   return NextResponse.json({

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSlipServiceAccess } from "@/lib/auth";
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
     from,
     to,
     todayAmount: todayRow?.amount ?? null,
+    canEditExisting: session.role === "admin",
     entries: rows.map(serialize),
   });
 }
@@ -91,18 +93,43 @@ export async function PUT(request: NextRequest) {
   }
 
   const enteredBy = staffActorName(session);
-  const row = await prisma.slipServiceValue.upsert({
-    where: { date: ymdToUtcDate(date) },
-    create: {
-      date: ymdToUtcDate(date),
-      amount,
-      enteredBy,
-    },
-    update: {
-      amount,
-      enteredBy,
-    },
+  const dateUtc = ymdToUtcDate(date);
+  const existing = await prisma.slipServiceValue.findUnique({
+    where: { date: dateUtc },
   });
 
-  return NextResponse.json(serialize(row));
+  if (existing && session.role !== "admin") {
+    return NextResponse.json(
+      { error: "Only admin can edit a saved day's slip value" },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const row = existing
+      ? await prisma.slipServiceValue.update({
+          where: { date: dateUtc },
+          data: { amount, enteredBy },
+        })
+      : await prisma.slipServiceValue.create({
+          data: {
+            date: dateUtc,
+            amount,
+            enteredBy,
+          },
+        });
+
+    return NextResponse.json(serialize(row));
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return NextResponse.json(
+        { error: "Slip value already entered for this date" },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 }

@@ -33,12 +33,28 @@ function agingBuckets(dates: Date[]) {
 }
 
 async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
-  const [cohortJobs, readyLiveJobs, returnLiveJobs, pendingLiveJobs, liveCounts] =
+  const [cohortJobs, deliveredInPeriod, readyLiveJobs, returnLiveJobs, pendingLiveJobs, liveCounts] =
     await Promise.all([
       prisma.jobCard.findMany({
         where: { receivedAt: { gte: start, lt: end } },
         select: {
           status: true,
+          serviceAmount: true,
+          serviceCharge: true,
+          sparesAmount: true,
+          statusHistory: {
+            orderBy: [{ changedAt: "desc" }, { id: "desc" }],
+            take: 8,
+            select: { status: true },
+          },
+        },
+      }),
+      prisma.jobCard.findMany({
+        where: {
+          status: "Delivered",
+          deliveredAt: { gte: start, lt: end },
+        },
+        select: {
           serviceAmount: true,
           serviceCharge: true,
           sparesAmount: true,
@@ -92,11 +108,12 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
   const jobsCreated = cohortJobs.length;
   const deliveredJobs = cohortJobs.filter((j) => j.status === "Delivered");
   const delivered = deliveredJobs.length;
-  const jobsReturned = deliveredJobs.filter((j) =>
+  const jobsReturned = deliveredInPeriod.filter((j) =>
     wasDeliveredFromReturn(j.statusHistory)
   ).length;
-  const collectionSplit = sumBillSplits(deliveredJobs);
+  const collectionSplit = sumBillSplits(deliveredInPeriod);
   const readyLiveSplit = sumBillSplits(readyLiveJobs);
+  const jobsDeliveredInPeriod = deliveredInPeriod.length;
 
   const undeliveredReady = countStatus(cohortJobs, "Ready");
   const undeliveredReturn = countStatus(cohortJobs, "Return");
@@ -140,7 +157,7 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
       sparesAmountTotal: collectionSplit.sparesAmountTotal,
       splitJobCount: collectionSplit.splitJobCount,
       jobsReturned,
-      jobsDeliveredReady: delivered - jobsReturned,
+      jobsDeliveredReady: jobsDeliveredInPeriod - jobsReturned,
       jobsDeliveredReturn: jobsReturned,
       pendingLive: liveByStatus.Pending ?? 0,
       returnLive: liveByStatus.Return ?? 0,
@@ -348,7 +365,10 @@ async function buildBrandApplianceReports(
   end: Date
 ) {
   const jobsInPeriod = await prisma.jobCard.findMany({
-    where: { receivedAt: { gte: start, lt: end } },
+    where: {
+      status: "Delivered",
+      deliveredAt: { gte: start, lt: end },
+    },
     select: {
       serviceAmount: true,
       serviceCharge: true,
@@ -406,7 +426,7 @@ export async function GET(request: NextRequest) {
     "summary") as ReportSection;
   const { start, end } = getPeriodRange(period);
 
-  const cacheKey = `reports:v9:${section}:${period}`;
+  const cacheKey = `reports:v10:${section}:${period}`;
   const cached = getCached<unknown>(cacheKey);
   if (cached) {
     return NextResponse.json(cached);
