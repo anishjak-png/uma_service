@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   }
 
   const jobs = await prisma.jobCard.findMany({
-    where: { customer: { mobile } },
+    where: { customer: { mobile }, status: { not: "Deleted" } },
     include: { customer: true },
     orderBy: { receivedAt: "desc" },
     take: 20,

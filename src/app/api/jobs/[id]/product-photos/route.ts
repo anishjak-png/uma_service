@@ -8,6 +8,7 @@ import {
   isSupabaseStorageConfigured,
   uploadProductPhotoBuffers,
 } from "@/lib/supabase-storage";
+import { isDeletedStatus } from "@/lib/job-lifecycle";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -41,6 +42,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    if (isDeletedStatus(job.status)) {
+      return NextResponse.json(
+        { error: "Deleted jobs cannot be edited" },
+        { status: 403 }
+      );
     }
 
     if (job.status === "Delivered" && session.role !== "admin") {

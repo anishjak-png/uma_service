@@ -19,7 +19,7 @@ export async function GET() {
     returnJobs,
     deliveredJobs,
   ] = await Promise.all([
-    prisma.jobCard.count({ where: assigned }),
+    prisma.jobCard.count({ where: { ...assigned, status: { not: "Deleted" } } }),
     prisma.jobCard.count({ where: { ...assigned, status: "Pending" } }),
     prisma.jobCard.count({
       where: { ...assigned, status: "WaitingForCustomerApproval" },

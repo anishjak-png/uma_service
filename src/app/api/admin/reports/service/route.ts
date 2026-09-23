@@ -36,7 +36,7 @@ async function buildSummary(period: ReportPeriod, start: Date, end: Date) {
   const [cohortJobs, deliveredInPeriod, readyLiveJobs, returnLiveJobs, pendingLiveJobs, liveCounts] =
     await Promise.all([
       prisma.jobCard.findMany({
-        where: { receivedAt: { gte: start, lt: end } },
+        where: { receivedAt: { gte: start, lt: end }, status: { not: "Deleted" } },
         select: {
           status: true,
           serviceAmount: true,
@@ -196,12 +196,13 @@ async function buildTechnicianReports(period: ReportPeriod, start: Date, end: Da
         where: {
           assignedTechnicianId: { not: null },
           receivedAt: { gte: start, lt: end },
+          status: { not: "Deleted" },
         },
       }),
       prisma.jobCard.groupBy({
         by: ["assignedTechnicianId", "status"],
         _count: { id: true },
-        where: { assignedTechnicianId: { not: null } },
+        where: { assignedTechnicianId: { not: null }, status: { not: "Deleted" } },
       }),
       prisma.jobCard.groupBy({
         by: ["completedByTechnicianId"],
@@ -426,7 +427,7 @@ export async function GET(request: NextRequest) {
     "summary") as ReportSection;
   const { start, end } = getPeriodRange(period);
 
-  const cacheKey = `reports:v10:${section}:${period}`;
+  const cacheKey = `reports:v11:${section}:${period}`;
   const cached = getCached<unknown>(cacheKey);
   if (cached) {
     return NextResponse.json(cached);

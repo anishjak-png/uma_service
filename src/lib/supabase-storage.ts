@@ -27,55 +27,54 @@ async function uploadPhotoBuffersToFolder(
   maxPhotos: number
 ): Promise<string[]> {
   const { url, key, bucket } = getStorageConfig();
-  const urls: string[] = [];
+  const safeJobNumber = jobNumber.replace(/\s+/g, "-");
 
-  for (const photo of photos.slice(0, maxPhotos)) {
-    const ext = photo.name.split(".").pop()?.toLowerCase() || "jpg";
-    const safeJobNumber = jobNumber.replace(/\s+/g, "-");
-    const path = `${safeJobNumber}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  return Promise.all(
+    photos.slice(0, maxPhotos).map(async (photo) => {
+      const ext = photo.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `${safeJobNumber}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-    const res = await fetch(`${url}/storage/v1/object/${bucket}/${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": photo.type || "image/jpeg",
-        "x-upsert": "false",
-      },
-      body: new Uint8Array(photo.buffer),
-    });
+      const res = await fetch(`${url}/storage/v1/object/${bucket}/${path}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": photo.type || "image/jpeg",
+          "x-upsert": "false",
+        },
+        body: new Uint8Array(photo.buffer),
+      });
 
-    if (!res.ok) {
-      const detail = await res.text();
-      let message = detail;
-      try {
-        const parsed = JSON.parse(detail) as { error?: string; message?: string };
-        message = parsed.error ?? parsed.message ?? detail;
-      } catch {
-        // keep raw text
+      if (!res.ok) {
+        const detail = await res.text();
+        let message = detail;
+        try {
+          const parsed = JSON.parse(detail) as { error?: string; message?: string };
+          message = parsed.error ?? parsed.message ?? detail;
+        } catch {
+          // keep raw text
+        }
+        const lower = message.toLowerCase();
+        if (lower.includes("bucket") && lower.includes("not found")) {
+          throw new Error(
+            `Photo upload failed: storage bucket "${bucket}" not found. Create it in Supabase Storage (public).`
+          );
+        }
+        if (lower.includes("row-level security") || lower.includes("unauthorized") || res.status === 401) {
+          throw new Error(
+            "Photo upload failed: check SUPABASE_SERVICE_ROLE_KEY on the server."
+          );
+        }
+        if (res.status === 404) {
+          throw new Error(
+            `Photo upload failed: storage path or bucket missing (${bucket}).`
+          );
+        }
+        throw new Error(`Photo upload failed: ${message}`);
       }
-      const lower = message.toLowerCase();
-      if (lower.includes("bucket") && lower.includes("not found")) {
-        throw new Error(
-          `Photo upload failed: storage bucket "${bucket}" not found. Create it in Supabase Storage (public).`
-        );
-      }
-      if (lower.includes("row-level security") || lower.includes("unauthorized") || res.status === 401) {
-        throw new Error(
-          "Photo upload failed: check SUPABASE_SERVICE_ROLE_KEY on the server."
-        );
-      }
-      if (res.status === 404) {
-        throw new Error(
-          `Photo upload failed: storage path or bucket missing (${bucket}).`
-        );
-      }
-      throw new Error(`Photo upload failed: ${message}`);
-    }
 
-    urls.push(`${url}/storage/v1/object/public/${bucket}/${path}`);
-  }
-
-  return urls;
+      return `${url}/storage/v1/object/public/${bucket}/${path}`;
+    })
+  );
 }
 
 export async function uploadProductPhotoBuffers(

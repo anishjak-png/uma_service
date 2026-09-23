@@ -11,6 +11,7 @@ import {
   isPhotoPickerCancelled,
   pickNativePhoto,
 } from "@/lib/native-photo";
+import { compressJobPhotos } from "@/lib/compress-image";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -69,6 +70,13 @@ export default function NewJobPage() {
   const [warrantyCardUrls, setWarrantyCardUrls] = useState<string[]>([]);
   const [warrantyCardUploading, setWarrantyCardUploading] = useState(false);
   const [warrantyCardError, setWarrantyCardError] = useState("");
+  const submittingRef = useRef(false);
+  const createKeyRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `ck-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  );
+  const attachedPhotosRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/lookups?category=appliance")
@@ -180,16 +188,17 @@ export default function NewJobPage() {
     const newFiles = Array.from(files).slice(0, MAX_PRODUCT_PHOTOS - photoFiles.length);
     if (newFiles.length === 0) return;
 
-    appendProductPhotos(newFiles);
+    void appendProductPhotos(newFiles);
     e.target.value = "";
   }
 
-  function appendProductPhotos(newFiles: File[]) {
+  async function appendProductPhotos(newFiles: File[]) {
     const limited = newFiles.slice(0, MAX_PRODUCT_PHOTOS - photoFiles.length);
     if (limited.length === 0) return;
-    setPhotoFiles((prev) => [...prev, ...limited].slice(0, MAX_PRODUCT_PHOTOS));
+    const compressed = await compressJobPhotos(limited);
+    setPhotoFiles((prev) => [...prev, ...compressed].slice(0, MAX_PRODUCT_PHOTOS));
     setPhotoPreviews((prev) =>
-      [...prev, ...limited.map((f) => URL.createObjectURL(f))].slice(
+      [...prev, ...compressed.map((f) => URL.createObjectURL(f))].slice(
         0,
         MAX_PRODUCT_PHOTOS
       )
@@ -201,7 +210,7 @@ export default function NewJobPage() {
     if (isNativeApp()) {
       try {
         const file = await pickNativePhoto({ preferCamera: true });
-        if (file) appendProductPhotos([file]);
+        if (file) await appendProductPhotos([file]);
       } catch (err) {
         if (!isPhotoPickerCancelled(err)) {
           setError(
@@ -230,21 +239,22 @@ export default function NewJobPage() {
     );
     if (newFiles.length === 0) return;
 
-    appendWarrantyCardFiles(newFiles);
+    void appendWarrantyCardFiles(newFiles);
     e.target.value = "";
   }
 
-  function appendWarrantyCardFiles(newFiles: File[]) {
+  async function appendWarrantyCardFiles(newFiles: File[]) {
     const limited = newFiles.slice(
       0,
       MAX_WARRANTY_CARD_PHOTOS - warrantyCardFiles.length
     );
     if (limited.length === 0) return;
+    const compressed = await compressJobPhotos(limited);
     setWarrantyCardFiles((prev) =>
-      [...prev, ...limited].slice(0, MAX_WARRANTY_CARD_PHOTOS)
+      [...prev, ...compressed].slice(0, MAX_WARRANTY_CARD_PHOTOS)
     );
     setWarrantyCardPreviews((prev) =>
-      [...prev, ...limited.map((f) => URL.createObjectURL(f))].slice(
+      [...prev, ...compressed.map((f) => URL.createObjectURL(f))].slice(
         0,
         MAX_WARRANTY_CARD_PHOTOS
       )
@@ -256,7 +266,7 @@ export default function NewJobPage() {
     if (isNativeApp()) {
       try {
         const file = await pickNativePhoto({ preferCamera: true });
-        if (file) appendWarrantyCardFiles([file]);
+        if (file) await appendWarrantyCardFiles([file]);
       } catch (err) {
         if (!isPhotoPickerCancelled(err)) {
           setError(
@@ -325,7 +335,8 @@ export default function NewJobPage() {
     setWarrantyCardError("");
 
     const formData = new FormData();
-    files.forEach((file) => formData.append("photos", file));
+    const compressed = await compressJobPhotos(files);
+    compressed.forEach((file) => formData.append("photos", file));
 
     try {
       const res = await fetch(
@@ -373,10 +384,13 @@ export default function NewJobPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setError("");
 
     const formData = new FormData();
+    formData.set("createKey", createKeyRef.current);
     formData.set("mobile", mobile);
     formData.set("customerName", customerName);
     formData.set("allowWhatsappNotifications", allowWhatsapp ? "true" : "false");
@@ -403,6 +417,8 @@ export default function NewJobPage() {
     if (accessoriesList.length > 0) {
       formData.set("accessories", JSON.stringify(accessoriesList));
     }
+    attachedPhotosRef.current =
+      photoFiles.length > 0 || (isWarranty && warrantyCardFiles.length > 0);
     photoFiles.forEach((file) => formData.append("photos", file));
     if (isWarranty) {
       warrantyCardFiles.forEach((file) =>
@@ -410,10 +426,18 @@ export default function NewJobPage() {
       );
     }
 
-    const res = await fetch("/api/jobs", {
-      method: "POST",
-      body: formData,
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/jobs", {
+        method: "POST",
+        body: formData,
+      });
+    } catch {
+      setError("Failed to create job");
+      submittingRef.current = false;
+      setLoading(false);
+      return;
+    }
 
     const raw = await res.text();
     let data: { error?: string } & Record<string, unknown> = {};
@@ -426,17 +450,20 @@ export default function NewJobPage() {
             ? "Unexpected server response"
             : `Failed to create job (${res.status})`
         );
+        submittingRef.current = false;
         setLoading(false);
         return;
       }
     } else if (!res.ok) {
       setError(`Failed to create job (${res.status})`);
+      submittingRef.current = false;
       setLoading(false);
       return;
     }
 
     if (!res.ok) {
       setError(data.error ?? "Failed to create job");
+      submittingRef.current = false;
       setLoading(false);
       return;
     }
@@ -463,6 +490,11 @@ export default function NewJobPage() {
               <p className="mt-2 break-all text-3xl font-bold text-green-900">
                 {createdJob.jobNumber}
               </p>
+              {attachedPhotosRef.current && (
+                <p className="mt-2 text-xs text-green-700">
+                  Photo is uploading and will appear on the job shortly.
+                </p>
+              )}
               {createdJob.assignedTechnician && (
                 <p className="mt-2 text-sm text-green-700">
                   Assigned to {createdJob.assignedTechnician.name}

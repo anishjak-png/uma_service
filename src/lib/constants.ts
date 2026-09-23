@@ -55,6 +55,7 @@ export const STATUS_LABELS: Record<string, string> = {
   Ready: "Ready",
   Return: "Return",
   Delivered: "Delivered",
+  Deleted: "Deleted",
 };
 
 export const WARRANTY_STATUSES = [
@@ -82,10 +83,12 @@ function isWarrantyStatus(status: string): boolean {
 
 /** Flexible status selection — no strict sequential flow. */
 export function getSelectableStatuses(
-  current: JobStatusValue,
+  current: JobStatusValue | string,
   role: StaffRole,
   opts?: { isWarranty?: boolean }
 ): JobStatusValue[] {
+  if (current === "Deleted") return [];
+
   if (current === "Delivered") {
     if (role !== "admin") return [];
     return [...ACTIVE_STATUSES];

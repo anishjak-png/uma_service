@@ -16,6 +16,7 @@ export function JobStatusBadge({
     Ready: "bg-green-100 text-green-800",
     Return: "bg-orange-100 text-orange-800",
     Delivered: "bg-slate-100 text-slate-700",
+    Deleted: "bg-red-100 text-red-800",
   };
 
   const labels: Record<string, string> = {
@@ -27,6 +28,7 @@ export function JobStatusBadge({
     Ready: "Ready",
     Return: "Return",
     Delivered: "Delivered",
+    Deleted: "Deleted",
   };
 
   return (

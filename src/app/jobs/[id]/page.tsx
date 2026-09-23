@@ -37,6 +37,8 @@ import {
   isPhotoPickerCancelled,
   pickNativePhoto,
 } from "@/lib/native-photo";
+import { compressJobPhotos } from "@/lib/compress-image";
+import { isDeletedStatus } from "@/lib/job-lifecycle";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -63,6 +65,9 @@ type JobDetail = {
   readyAt?: string | null;
   deliveredAt?: string | null;
   createdBy?: string | null;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  deleteReason?: string | null;
   accessories?: string | null;
   outsourcedAt?: string | null;
   whatsappNotificationsOverride?: boolean | null;
@@ -262,6 +267,10 @@ export default function JobDetailPage() {
   const [editCustomerMobile, setEditCustomerMobile] = useState("");
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [warrantyPhotoUploading, setWarrantyPhotoUploading] = useState(false);
   const [warrantyPhotoError, setWarrantyPhotoError] = useState("");
   const productPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -630,7 +639,8 @@ export default function JobDetailPage() {
     setPhotoUploading(true);
     setPhotoError("");
     const formData = new FormData();
-    files.slice(0, remaining).forEach((file) => formData.append("photos", file));
+    const compressed = await compressJobPhotos(files.slice(0, remaining));
+    compressed.forEach((file) => formData.append("photos", file));
 
     try {
       const res = await fetch(`/api/jobs/${job.id}/product-photos`, {
@@ -686,7 +696,8 @@ export default function JobDetailPage() {
     setWarrantyPhotoUploading(true);
     setWarrantyPhotoError("");
     const formData = new FormData();
-    files.slice(0, remaining).forEach((file) => formData.append("photos", file));
+    const compressed = await compressJobPhotos(files.slice(0, remaining));
+    compressed.forEach((file) => formData.append("photos", file));
 
     try {
       const res = await fetch(`/api/jobs/${job.id}/warranty-card-photos`, {
@@ -736,6 +747,57 @@ export default function JobDetailPage() {
     warrantyPhotoInputRef.current?.click();
   }
 
+  async function deleteJob() {
+    if (!job || deleting) return;
+    const reason = deleteReason.trim();
+    if (reason.length < 3) {
+      setDeleteError("Enter a reason (at least 3 characters)");
+      return;
+    }
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDeleteError(data.error ?? "Delete failed");
+        return;
+      }
+      setJob((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "Deleted",
+              deletedAt: data.deletedAt ?? new Date().toISOString(),
+              deletedBy: data.deletedBy ?? null,
+              deleteReason: data.deleteReason ?? reason,
+              statusHistory: data.statusHistoryEntry
+                ? [
+                    {
+                      id: `deleted-${Date.now()}`,
+                      status: "Deleted",
+                      note: data.statusHistoryEntry.note,
+                      changedBy: data.statusHistoryEntry.changedBy,
+                      changedAt: data.statusHistoryEntry.changedAt,
+                    },
+                    ...prev.statusHistory,
+                  ]
+                : prev.statusHistory,
+            }
+          : prev
+      );
+      setDeleteOpen(false);
+    } catch {
+      setDeleteError("Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (loading || !job || !authLoaded) {
     return (
       <AppShell>
@@ -767,7 +829,8 @@ export default function JobDetailPage() {
   // Technicians see the Ready total on detail (they enter it); lists still hide amounts.
   const showFinancials =
     role === "technician" || role === "reception" || role === "admin";
-  const isLocked = isDeliveredTerminal(job.status) && !isAdmin;
+  const isDeleted = isDeletedStatus(job.status);
+  const isLocked = isDeleted || (isDeliveredTerminal(job.status) && !isAdmin);
   const canAdminEditAmount = isAdmin && job.readyAt != null && !isLocked;
   const canEditAssignee =
     isStaff && !isLocked && !job.isWarranty && job.status !== "Outsourced";
@@ -835,6 +898,20 @@ export default function JobDetailPage() {
             {job.deliveredAt ? ` · Delivered ${formatDateTime(job.deliveredAt)}` : ""}
           </p>
         </CompactCard>
+
+        {isDeleted && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+            <p className="font-semibold">This job is deleted</p>
+            <p className="mt-1 text-xs leading-snug">
+              Number {job.jobNumber} stays reserved and cannot be used again.
+              {job.deletedBy ? ` · ${formatStatusChangedBy(job.deletedBy)}` : ""}
+              {job.deletedAt ? ` · ${formatDateTime(job.deletedAt)}` : ""}
+            </p>
+            {job.deleteReason && (
+              <p className="mt-1 text-xs">Reason: {job.deleteReason}</p>
+            )}
+          </div>
+        )}
 
         {showReadyForm && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 shadow-sm space-y-2">
@@ -1036,7 +1113,7 @@ export default function JobDetailPage() {
           </div>
         )}
 
-        <CompactCard title="Actions">
+        {!isDeleted && <CompactCard title="Actions">
           {!showReadyForm &&
             !showReturnForm &&
             !showOutsourceForm &&
@@ -1086,7 +1163,7 @@ export default function JobDetailPage() {
               )}
             </div>
           )}
-        </CompactCard>
+        </CompactCard>}
 
         <CompactCard title="Details">
           {canEditCustomer && editingCustomer ? (
@@ -1763,6 +1840,39 @@ export default function JobDetailPage() {
                   )
                 }
               />
+            </div>
+          </details>
+        )}
+
+        {isAdmin && !isDeleted && (
+          <details
+            className="rounded-lg border border-red-200 bg-white shadow-sm"
+            open={deleteOpen}
+            onToggle={(e) => setDeleteOpen((e.target as HTMLDetailsElement).open)}
+          >
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+              Delete job
+            </summary>
+            <div className="space-y-2 border-t border-red-100 px-3 pb-3 pt-2">
+              <p className="text-xs leading-snug text-slate-600">
+                Admin only. The number stays deleted and will not be reused.
+              </p>
+              <textarea
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                rows={2}
+                placeholder="Reason"
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              />
+              <button
+                type="button"
+                onClick={() => void deleteJob()}
+                disabled={deleting}
+                className="w-full rounded-md bg-red-600 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete this job"}
+              </button>
+              {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
             </div>
           </details>
         )}

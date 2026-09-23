@@ -16,6 +16,7 @@ import {
   type ReportPeriod,
 } from "@/lib/reports";
 import { getSession } from "@/lib/session";
+import { excludeDeletedFromWhere, notDeletedWhere } from "@/lib/job-lifecycle";
 
 function technicianScopeWhere(
   session: Awaited<ReturnType<typeof getSession>>,
@@ -248,6 +249,8 @@ async function browseJobsResponse(params: {
     });
   }
 
+  Object.assign(where, excludeDeletedFromWhere(where));
+
   const jobs = await prisma.jobCard.findMany({
     where,
     select: getJobListSelect(),
@@ -364,6 +367,7 @@ async function searchJobs(request: NextRequest) {
         ...statusWhere,
         ...outsourceWhere,
         ...warrantyWhere,
+        ...(statusWhere.status ? {} : notDeletedWhere()),
       },
       select: getJobListSelect(),
       orderBy: { receivedAt: "desc" },
@@ -372,7 +376,7 @@ async function searchJobs(request: NextRequest) {
 
   async function totalVisitsForCustomer(id: string) {
     return prisma.jobCard.count({
-      where: { customerId: id, ...scopeWhere },
+      where: { customerId: id, ...scopeWhere, ...notDeletedWhere() },
     });
   }
 
@@ -473,7 +477,7 @@ async function searchJobs(request: NextRequest) {
       id: true,
       name: true,
       mobile: true,
-      _count: { select: { jobCards: true } },
+      _count: { select: { jobCards: { where: notDeletedWhere() } } },
     },
     orderBy: { name: "asc" },
     take: 20,

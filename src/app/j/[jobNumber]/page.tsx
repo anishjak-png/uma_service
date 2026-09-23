@@ -44,7 +44,7 @@ export default async function PublicStatusPage({ params }: PageProps) {
     include: { customer: true },
   });
 
-  if (!job) {
+  if (!job || job.status === "Deleted") {
     notFound();
   }
 

@@ -29,6 +29,7 @@ enum JobStatus {
   Ready
   Return
   Delivered
+  Deleted
 }
 
 enum DeliveryContactStatus {
@@ -190,6 +191,10 @@ model JobCard {
   isWarranty               Boolean           @default(false)
   warrantyPurchaseDate     DateTime?
   warrantyTakenAt          DateTime?
+  deletedAt                DateTime?
+  deletedBy                String?
+  deleteReason             String?
+  createKey                String?           @unique
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
   statusHistory            StatusHistory[]

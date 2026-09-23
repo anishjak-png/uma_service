@@ -23,6 +23,7 @@ import {
   isServiceAmountLocked,
 } from "@/lib/auth";
 import { applyJobCustomerCorrection } from "@/lib/customer-contact";
+import { isDeletedStatus } from "@/lib/job-lifecycle";
 import { getSession } from "@/lib/session";
 import { dispatchNotificationEventAsync } from "@/lib/notifications/events";
 import {
@@ -78,6 +79,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (!existing) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    if (isDeletedStatus(existing.status)) {
+      return NextResponse.json(
+        { error: "Deleted jobs cannot be edited" },
+        { status: 403 }
+      );
     }
 
     if (existing.status === "Delivered" && !canEditDeliveredJob(session.role)) {

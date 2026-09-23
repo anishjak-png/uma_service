@@ -1,5 +1,5 @@
 import { after, NextRequest, NextResponse } from "next/server";
-import { JobStatus } from "@prisma/client";
+import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   accessoryNames,
@@ -26,10 +26,13 @@ import { MAX_PRODUCT_PHOTOS, MAX_WARRANTY_CARD_PHOTOS } from "@/lib/constants";
 import { getJobListSelect } from "@/lib/job-selects";
 import {
   isSupabaseStorageConfigured,
-  uploadProductPhotoBuffers,
-  uploadWarrantyCardPhotoBuffers,
   type PhotoBufferPayload,
 } from "@/lib/supabase-storage";
+import {
+  DUPLICATE_CREATE_WINDOW_MS,
+  excludeDeletedFromWhere,
+  parseCreateKey,
+} from "@/lib/job-lifecycle";
 
 export async function GET(request: NextRequest) {
   try {
@@ -114,6 +117,10 @@ async function listJobs(request: NextRequest) {
   const outsourcedToId = searchParams.get("outsourcedToId")?.trim();
   if (outsourcedToId) {
     where.outsourcedToId = outsourcedToId;
+  }
+
+  if (!(q && detectSearchQueryType(q) === "ut")) {
+    Object.assign(where, excludeDeletedFromWhere(where));
   }
 
   const isMobileSearch = detectSearchQueryType(q) === "mobile";
@@ -207,6 +214,7 @@ async function createJob(request: NextRequest) {
   let isWarranty = false;
   let warrantyPurchaseDateRaw: unknown;
   let allowWhatsappNotifications = true;
+  let createKey: string | null = null;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -227,6 +235,7 @@ async function createJob(request: NextRequest) {
     if (typeof accessoriesRaw === "string" && accessoriesRaw.trim()) {
       accessoriesList = parseAccessories(accessoriesRaw);
     }
+    createKey = parseCreateKey(form.get("createKey"));
     photoFiles = form
       .getAll("photos")
       .filter((f): f is File => f instanceof File && f.size > 0)
@@ -252,6 +261,7 @@ async function createJob(request: NextRequest) {
       body.allowWhatsappNotifications === undefined
         ? true
         : Boolean(body.allowWhatsappNotifications);
+    createKey = parseCreateKey(body.createKey);
     if (body.accessories !== undefined) {
       accessoriesList = parseAccessories(
         typeof body.accessories === "string"
@@ -351,8 +361,22 @@ async function createJob(request: NextRequest) {
 
   const creatorName = staffActorName(session);
   const brandName = brand.trim();
+  const createdJobInclude = {
+    customer: true,
+    assignedTechnician: true,
+  } as const;
 
-  const [customer, jobNumber, defaultTech] = await Promise.all([
+  if (createKey) {
+    const existingByKey = await prisma.jobCard.findUnique({
+      where: { createKey },
+      include: createdJobInclude,
+    });
+    if (existingByKey) {
+      return NextResponse.json(existingByKey, { status: 200 });
+    }
+  }
+
+  const [customer, photoBuffers, warrantyCardBuffers] = await Promise.all([
     prisma.customer.upsert({
       where: { mobile: normalizedMobile },
       update: {
@@ -365,14 +389,35 @@ async function createJob(request: NextRequest) {
         allowWhatsappNotifications,
       },
     }),
+    photoFiles.length > 0 ? readPhotoBuffers(photoFiles) : Promise.resolve<PhotoBufferPayload[]>([]),
+    warrantyCardPhotoFiles.length > 0
+      ? readPhotoBuffers(warrantyCardPhotoFiles)
+      : Promise.resolve<PhotoBufferPayload[]>([]),
+  ]);
+
+  const recentTwin = await prisma.jobCard.findFirst({
+    where: {
+      customerId: customer.id,
+      applianceType,
+      brand: brandName,
+      complaint,
+      status: { not: "Deleted" },
+      receivedAt: { gte: new Date(Date.now() - DUPLICATE_CREATE_WINDOW_MS) },
+    },
+    include: createdJobInclude,
+    orderBy: { receivedAt: "desc" },
+  });
+  if (recentTwin) {
+    return NextResponse.json(recentTwin, { status: 200 });
+  }
+
+  const [jobNumber, defaultTech] = await Promise.all([
     generateJobNumber(),
     isWarranty ? Promise.resolve(null) : getDefaultTechnicianForAppliance(applianceType),
   ]);
 
   const assignedTechnicianId = isWarranty ? null : defaultTech?.id ?? null;
-
   const assignedTechName = defaultTech?.name ?? null;
-
   const initialStatus = isWarranty ? "WarrantyPending" : "Pending";
   const createNote = isWarranty
     ? `Warranty job created by ${creatorName} — ${brandName}`
@@ -380,64 +425,53 @@ async function createJob(request: NextRequest) {
       ? `Job card created by ${creatorName} — assigned to ${assignedTechName}`
       : `Job card created by ${creatorName}`;
 
-  let productPhotosJson: string | null = null;
-  let warrantyCardPhotosJson: string | null = null;
-
-  if (photoFiles.length > 0 || warrantyCardPhotoFiles.length > 0) {
-    try {
-      if (photoFiles.length > 0) {
-        const urls = await uploadProductPhotoBuffers(
-          await readPhotoBuffers(photoFiles),
-          jobNumber
-        );
-        productPhotosJson = JSON.stringify(urls);
-      }
-      if (warrantyCardPhotoFiles.length > 0) {
-        const urls = await uploadWarrantyCardPhotoBuffers(
-          await readPhotoBuffers(warrantyCardPhotoFiles),
-          jobNumber
-        );
-        warrantyCardPhotosJson = JSON.stringify(urls);
-      }
-    } catch (error) {
-      console.error("[job-create] Photo upload failed", error);
-      const message =
-        error instanceof Error ? error.message : "Photo upload failed";
-      return NextResponse.json({ error: message }, { status: 500 });
-    }
-  }
-
-  const job = await prisma.jobCard.create({
-    data: {
-      jobNumber,
-      customerId: customer.id,
-      applianceType,
-      brand: brandName,
-      model: model?.trim() || null,
-      complaint,
-      physicalCondition: physicalCondition?.trim() || null,
-      accessories: serializeAccessories(accessoriesList),
-      productPhotos: productPhotosJson,
-      warrantyCardPhotos: warrantyCardPhotosJson,
-      status: initialStatus,
-      assignedTechnicianId,
-      isWarranty,
-      warrantyPurchaseDate: isWarranty ? warrantyPurchaseDate : null,
-      whatsappNotificationsOverride: allowWhatsappNotifications ? null : false,
-      createdBy: creatorName,
-      statusHistory: {
-        create: {
-          status: initialStatus,
-          changedBy: creatorName,
-          note: createNote,
+  let job;
+  try {
+    job = await prisma.jobCard.create({
+      data: {
+        jobNumber,
+        customerId: customer.id,
+        applianceType,
+        brand: brandName,
+        model: model?.trim() || null,
+        complaint,
+        physicalCondition: physicalCondition?.trim() || null,
+        accessories: serializeAccessories(accessoriesList),
+        productPhotos: null,
+        warrantyCardPhotos: null,
+        status: initialStatus,
+        assignedTechnicianId,
+        isWarranty,
+        warrantyPurchaseDate: isWarranty ? warrantyPurchaseDate : null,
+        whatsappNotificationsOverride: allowWhatsappNotifications ? null : false,
+        createdBy: creatorName,
+        createKey,
+        statusHistory: {
+          create: {
+            status: initialStatus,
+            changedBy: creatorName,
+            note: createNote,
+          },
         },
       },
-    },
-    include: {
-      customer: true,
-      assignedTechnician: true,
-    },
-  });
+      include: createdJobInclude,
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      createKey
+    ) {
+      const existingByKey = await prisma.jobCard.findUnique({
+        where: { createKey },
+        include: createdJobInclude,
+      });
+      if (existingByKey) {
+        return NextResponse.json(existingByKey, { status: 200 });
+      }
+    }
+    throw error;
+  }
 
   after(async () => {
     console.log("[Notification] Post-create tasks started", {
@@ -450,8 +484,8 @@ async function createJob(request: NextRequest) {
       applianceType,
       brand,
       complaint,
-      photos: [],
-      warrantyCardPhotos: [],
+      photos: photoBuffers,
+      warrantyCardPhotos: warrantyCardBuffers,
     });
   });
 

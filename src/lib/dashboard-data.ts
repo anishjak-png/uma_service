@@ -63,7 +63,10 @@ export async function getReceptionDashboardData() {
 
   const [todayJobs, statusGroups, readyRows] = await Promise.all([
     prisma.jobCard.count({
-      where: { receivedAt: { gte: today, lt: tomorrow } },
+      where: {
+        receivedAt: { gte: today, lt: tomorrow },
+        status: { not: "Deleted" },
+      },
     }),
     prisma.jobCard.groupBy({
       by: ["status"],
@@ -95,7 +98,10 @@ export async function getAdminDashboardData() {
   const [todayJobs, statusGroups, todayDelivered, monthlyDelivered, readyRows] =
     await Promise.all([
       prisma.jobCard.count({
-        where: { receivedAt: { gte: today, lt: tomorrow } },
+        where: {
+          receivedAt: { gte: today, lt: tomorrow },
+          status: { not: "Deleted" },
+        },
       }),
       prisma.jobCard.groupBy({
         by: ["status"],

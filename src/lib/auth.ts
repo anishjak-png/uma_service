@@ -53,6 +53,10 @@ export function canReopenDeliveredJob(role: StaffRole) {
   return role === "admin";
 }
 
+export function canDeleteJob(role: StaffRole) {
+  return role === "admin";
+}
+
 export function canEditServiceAmount(role: StaffRole) {
   return role === "admin";
 }

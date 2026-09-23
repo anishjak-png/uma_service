@@ -22,7 +22,7 @@ export async function GET() {
     applianceWise,
   ] = await Promise.all([
     prisma.jobCard.count({
-      where: { receivedAt: { gte: today, lt: tomorrow } },
+      where: { receivedAt: { gte: today, lt: tomorrow }, status: { not: "Deleted" } },
     }),
     prisma.jobCard.count({ where: { status: "Pending" } }),
     prisma.jobCard.count({ where: { status: "Ready" } }),
@@ -31,7 +31,7 @@ export async function GET() {
       where: { status: "Delivered", deliveredAt: { gte: today, lt: tomorrow } },
     }),
     prisma.jobCard.count({
-      where: { receivedAt: { gte: monthStart, lt: nextMonth } },
+      where: { receivedAt: { gte: monthStart, lt: nextMonth }, status: { not: "Deleted" } },
     }),
     prisma.jobCard.groupBy({
       by: ["assignedTechnicianId"],
