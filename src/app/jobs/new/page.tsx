@@ -65,6 +65,7 @@ export default function NewJobPage() {
   const [warrantyCardPreviews, setWarrantyCardPreviews] = useState<string[]>([]);
   const [lookupsLoading, setLookupsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState<"saving" | "photo" | "">("");
   const [error, setError] = useState("");
   const [createdJob, setCreatedJob] = useState<CreatedJob | null>(null);
   const [warrantyCardUrls, setWarrantyCardUrls] = useState<string[]>([]);
@@ -290,8 +291,21 @@ export default function NewJobPage() {
     setWarrantyCardPreviews([]);
   }
 
+  function newCreateKey() {
+    return typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `ck-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
   function resetForm() {
+    submittingRef.current = false;
+    createKeyRef.current = newCreateKey();
+    attachedPhotosRef.current = false;
     setCreatedJob(null);
+    setLoading(false);
+    setLoadingStep("");
+    setError("");
+    setPhotoUploadError("");
     setMobile("");
     setCustomerName("");
     setAllowWhatsapp(true);
@@ -386,7 +400,9 @@ export default function NewJobPage() {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setLoading(true);
+    setLoadingStep("saving");
     setError("");
+    setPhotoUploadError("");
 
     const accessoriesList = Object.entries(accessoryQty).map(([name, qty]) => ({
       name,
@@ -438,6 +454,7 @@ export default function NewJobPage() {
       );
       submittingRef.current = false;
       setLoading(false);
+      setLoadingStep("");
       return;
     } finally {
       window.clearTimeout(abortTimer);
@@ -456,12 +473,14 @@ export default function NewJobPage() {
         );
         submittingRef.current = false;
         setLoading(false);
+        setLoadingStep("");
         return;
       }
     } else if (!res.ok) {
       setError(`Failed to create job (${res.status})`);
       submittingRef.current = false;
       setLoading(false);
+      setLoadingStep("");
       return;
     }
 
@@ -469,17 +488,22 @@ export default function NewJobPage() {
       setError(data.error ?? "Failed to create job");
       submittingRef.current = false;
       setLoading(false);
+      setLoadingStep("");
       return;
     }
 
     const created = data as unknown as CreatedJob;
+    if (pendingProductPhotos.length > 0 || pendingWarrantyPhotos.length > 0) {
+      setLoadingStep("photo");
+      await uploadCreatedJobPhotos(
+        created.id,
+        pendingProductPhotos,
+        pendingWarrantyPhotos
+      );
+    }
     setCreatedJob(created);
     setLoading(false);
-    void uploadCreatedJobPhotos(
-      created.id,
-      pendingProductPhotos,
-      pendingWarrantyPhotos
-    );
+    setLoadingStep("");
   }
 
   async function uploadCreatedJobPhotos(
@@ -487,39 +511,50 @@ export default function NewJobPage() {
     productPhotos: File[],
     warrantyPhotos: File[]
   ) {
-    if (productPhotos.length > 0) {
+    const uploadOnce = async (path: string, files: File[]) => {
       const formData = new FormData();
-      const compressed = await compressJobPhotos(productPhotos);
+      const compressed = await compressJobPhotos(files);
       compressed.forEach((file) => formData.append("photos", file));
-      const res = await fetch(`/api/jobs/${jobId}/product-photos`, {
-        method: "POST",
-        body: formData,
-      }).catch(() => null);
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 12_000);
+      try {
+        return await fetch(path, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+
+    if (productPhotos.length > 0) {
+      const res = await uploadOnce(
+        `/api/jobs/${jobId}/product-photos`,
+        productPhotos
+      ).catch(() => null);
       if (!res?.ok) {
         setPhotoUploadError(
-          "Job is saved. Photo upload failed — add it on Job Details."
+          "Job is saved. Add the photo from Job Details if it is missing."
         );
       }
     }
     if (warrantyPhotos.length === 0) return;
-    const formData = new FormData();
-    const compressed = await compressJobPhotos(warrantyPhotos);
-    compressed.forEach((file) => formData.append("photos", file));
     try {
-      const res = await fetch(`/api/jobs/${jobId}/warranty-card-photos`, {
-        method: "POST",
-        body: formData,
-      });
+      const res = await uploadOnce(
+        `/api/jobs/${jobId}/warranty-card-photos`,
+        warrantyPhotos
+      );
       const photoData = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(photoData.warrantyCardPhotos)) {
         setWarrantyCardUrls(photoData.warrantyCardPhotos);
       } else if (!res.ok) {
         setWarrantyCardError(
-          photoData.error ?? "Photo uploaded after save failed. Add it on Job Details."
+          photoData.error ?? "Job is saved. Add the warranty photo on Job Details."
         );
       }
     } catch {
-      setWarrantyCardError("Photo uploaded after save failed. Add it on Job Details.");
+      setWarrantyCardError("Job is saved. Add the warranty photo on Job Details.");
     }
   }
 
@@ -541,10 +576,18 @@ export default function NewJobPage() {
               <p className="mt-2 break-all text-3xl font-bold text-green-900">
                 {createdJob.jobNumber}
               </p>
-              {attachedPhotosRef.current && !photoUploadError && (
-                <p className="mt-2 text-xs text-green-700">
-                  Photo is uploading and will appear on the job shortly.
-                </p>
+              {photoPreviews.length > 0 && (
+                <div className="mt-3 flex justify-center gap-2">
+                  {photoPreviews.map((preview) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={preview}
+                      src={preview}
+                      alt=""
+                      className="h-14 w-14 rounded-md border border-emerald-200 object-cover"
+                    />
+                  ))}
+                </div>
               )}
               {photoUploadError && (
                 <p className="mt-2 text-xs text-red-700">{photoUploadError}</p>
@@ -1069,7 +1112,11 @@ export default function NewJobPage() {
           }
           className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
         >
-          {loading ? "Creating..." : "Create Job Card"}
+          {loading
+            ? loadingStep === "photo"
+              ? "Uploading photo…"
+              : "Saving…"
+            : "Create Job Card"}
         </button>
       </form>
     </AppShell>
