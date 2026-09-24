@@ -70,6 +70,7 @@ export default function NewJobPage() {
   const [warrantyCardUrls, setWarrantyCardUrls] = useState<string[]>([]);
   const [warrantyCardUploading, setWarrantyCardUploading] = useState(false);
   const [warrantyCardError, setWarrantyCardError] = useState("");
+  const [photoUploadError, setPhotoUploadError] = useState("");
   const submittingRef = useRef(false);
   const createKeyRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -188,17 +189,16 @@ export default function NewJobPage() {
     const newFiles = Array.from(files).slice(0, MAX_PRODUCT_PHOTOS - photoFiles.length);
     if (newFiles.length === 0) return;
 
-    void appendProductPhotos(newFiles);
+    appendProductPhotos(newFiles);
     e.target.value = "";
   }
 
-  async function appendProductPhotos(newFiles: File[]) {
+  function appendProductPhotos(newFiles: File[]) {
     const limited = newFiles.slice(0, MAX_PRODUCT_PHOTOS - photoFiles.length);
     if (limited.length === 0) return;
-    const compressed = await compressJobPhotos(limited);
-    setPhotoFiles((prev) => [...prev, ...compressed].slice(0, MAX_PRODUCT_PHOTOS));
+    setPhotoFiles((prev) => [...prev, ...limited].slice(0, MAX_PRODUCT_PHOTOS));
     setPhotoPreviews((prev) =>
-      [...prev, ...compressed.map((f) => URL.createObjectURL(f))].slice(
+      [...prev, ...limited.map((f) => URL.createObjectURL(f))].slice(
         0,
         MAX_PRODUCT_PHOTOS
       )
@@ -210,7 +210,7 @@ export default function NewJobPage() {
     if (isNativeApp()) {
       try {
         const file = await pickNativePhoto({ preferCamera: true });
-        if (file) await appendProductPhotos([file]);
+        if (file) appendProductPhotos([file]);
       } catch (err) {
         if (!isPhotoPickerCancelled(err)) {
           setError(
@@ -239,22 +239,21 @@ export default function NewJobPage() {
     );
     if (newFiles.length === 0) return;
 
-    void appendWarrantyCardFiles(newFiles);
+    appendWarrantyCardFiles(newFiles);
     e.target.value = "";
   }
 
-  async function appendWarrantyCardFiles(newFiles: File[]) {
+  function appendWarrantyCardFiles(newFiles: File[]) {
     const limited = newFiles.slice(
       0,
       MAX_WARRANTY_CARD_PHOTOS - warrantyCardFiles.length
     );
     if (limited.length === 0) return;
-    const compressed = await compressJobPhotos(limited);
     setWarrantyCardFiles((prev) =>
-      [...prev, ...compressed].slice(0, MAX_WARRANTY_CARD_PHOTOS)
+      [...prev, ...limited].slice(0, MAX_WARRANTY_CARD_PHOTOS)
     );
     setWarrantyCardPreviews((prev) =>
-      [...prev, ...compressed.map((f) => URL.createObjectURL(f))].slice(
+      [...prev, ...limited.map((f) => URL.createObjectURL(f))].slice(
         0,
         MAX_WARRANTY_CARD_PHOTOS
       )
@@ -266,7 +265,7 @@ export default function NewJobPage() {
     if (isNativeApp()) {
       try {
         const file = await pickNativePhoto({ preferCamera: true });
-        if (file) await appendWarrantyCardFiles([file]);
+        if (file) appendWarrantyCardFiles([file]);
       } catch (err) {
         if (!isPhotoPickerCancelled(err)) {
           setError(
@@ -389,20 +388,6 @@ export default function NewJobPage() {
     setLoading(true);
     setError("");
 
-    const formData = new FormData();
-    formData.set("createKey", createKeyRef.current);
-    formData.set("mobile", mobile);
-    formData.set("customerName", customerName);
-    formData.set("allowWhatsappNotifications", allowWhatsapp ? "true" : "false");
-    formData.set("applianceType", applianceType);
-    formData.set("brand", brand);
-    formData.set("model", model);
-    formData.set("complaint", complaint);
-    formData.set("physicalCondition", physicalCondition);
-    formData.set("isWarranty", isWarranty ? "true" : "false");
-    if (isWarranty && warrantyPurchaseDate) {
-      formData.set("warrantyPurchaseDate", warrantyPurchaseDate);
-    }
     const accessoriesList = Object.entries(accessoryQty).map(([name, qty]) => ({
       name,
       qty,
@@ -414,29 +399,48 @@ export default function NewJobPage() {
         qty: Math.max(1, Math.min(999, Math.floor(otherAccessoryQty) || 1)),
       });
     }
-    if (accessoriesList.length > 0) {
-      formData.set("accessories", JSON.stringify(accessoriesList));
-    }
     attachedPhotosRef.current =
       photoFiles.length > 0 || (isWarranty && warrantyCardFiles.length > 0);
-    photoFiles.forEach((file) => formData.append("photos", file));
-    if (isWarranty) {
-      warrantyCardFiles.forEach((file) =>
-        formData.append("warrantyCardPhotos", file)
-      );
-    }
+    const pendingProductPhotos = [...photoFiles];
+    const pendingWarrantyPhotos = isWarranty ? [...warrantyCardFiles] : [];
+
+    const controller = new AbortController();
+    const abortTimer = window.setTimeout(() => controller.abort(), 15_000);
 
     let res: Response;
     try {
       res = await fetch("/api/jobs", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          createKey: createKeyRef.current,
+          mobile,
+          customerName,
+          allowWhatsappNotifications: allowWhatsapp,
+          applianceType,
+          brand,
+          model,
+          complaint,
+          physicalCondition,
+          isWarranty,
+          warrantyPurchaseDate: isWarranty ? warrantyPurchaseDate : undefined,
+          accessories: accessoriesList,
+        }),
       });
-    } catch {
-      setError("Failed to create job");
+    } catch (error) {
+      const aborted =
+        error instanceof DOMException && error.name === "AbortError";
+      setError(
+        aborted
+          ? "Network is slow. Search the customer — the job may already be created."
+          : "Failed to create job"
+      );
       submittingRef.current = false;
       setLoading(false);
       return;
+    } finally {
+      window.clearTimeout(abortTimer);
     }
 
     const raw = await res.text();
@@ -468,8 +472,55 @@ export default function NewJobPage() {
       return;
     }
 
-    setCreatedJob(data as unknown as CreatedJob);
+    const created = data as unknown as CreatedJob;
+    setCreatedJob(created);
     setLoading(false);
+    void uploadCreatedJobPhotos(
+      created.id,
+      pendingProductPhotos,
+      pendingWarrantyPhotos
+    );
+  }
+
+  async function uploadCreatedJobPhotos(
+    jobId: string,
+    productPhotos: File[],
+    warrantyPhotos: File[]
+  ) {
+    if (productPhotos.length > 0) {
+      const formData = new FormData();
+      const compressed = await compressJobPhotos(productPhotos);
+      compressed.forEach((file) => formData.append("photos", file));
+      const res = await fetch(`/api/jobs/${jobId}/product-photos`, {
+        method: "POST",
+        body: formData,
+      }).catch(() => null);
+      if (!res?.ok) {
+        setPhotoUploadError(
+          "Job is saved. Photo upload failed — add it on Job Details."
+        );
+      }
+    }
+    if (warrantyPhotos.length === 0) return;
+    const formData = new FormData();
+    const compressed = await compressJobPhotos(warrantyPhotos);
+    compressed.forEach((file) => formData.append("photos", file));
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/warranty-card-photos`, {
+        method: "POST",
+        body: formData,
+      });
+      const photoData = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(photoData.warrantyCardPhotos)) {
+        setWarrantyCardUrls(photoData.warrantyCardPhotos);
+      } else if (!res.ok) {
+        setWarrantyCardError(
+          photoData.error ?? "Photo uploaded after save failed. Add it on Job Details."
+        );
+      }
+    } catch {
+      setWarrantyCardError("Photo uploaded after save failed. Add it on Job Details.");
+    }
   }
 
   if (!authLoaded) {
@@ -490,10 +541,13 @@ export default function NewJobPage() {
               <p className="mt-2 break-all text-3xl font-bold text-green-900">
                 {createdJob.jobNumber}
               </p>
-              {attachedPhotosRef.current && (
+              {attachedPhotosRef.current && !photoUploadError && (
                 <p className="mt-2 text-xs text-green-700">
                   Photo is uploading and will appear on the job shortly.
                 </p>
+              )}
+              {photoUploadError && (
+                <p className="mt-2 text-xs text-red-700">{photoUploadError}</p>
               )}
               {createdJob.assignedTechnician && (
                 <p className="mt-2 text-sm text-green-700">

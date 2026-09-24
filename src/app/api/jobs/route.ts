@@ -376,24 +376,18 @@ async function createJob(request: NextRequest) {
     }
   }
 
-  const [customer, photoBuffers, warrantyCardBuffers] = await Promise.all([
-    prisma.customer.upsert({
-      where: { mobile: normalizedMobile },
-      update: {
-        name: customerName.trim(),
-        allowWhatsappNotifications,
-      },
-      create: {
-        mobile: normalizedMobile,
-        name: customerName.trim(),
-        allowWhatsappNotifications,
-      },
-    }),
-    photoFiles.length > 0 ? readPhotoBuffers(photoFiles) : Promise.resolve<PhotoBufferPayload[]>([]),
-    warrantyCardPhotoFiles.length > 0
-      ? readPhotoBuffers(warrantyCardPhotoFiles)
-      : Promise.resolve<PhotoBufferPayload[]>([]),
-  ]);
+  const customer = await prisma.customer.upsert({
+    where: { mobile: normalizedMobile },
+    update: {
+      name: customerName.trim(),
+      allowWhatsappNotifications,
+    },
+    create: {
+      mobile: normalizedMobile,
+      name: customerName.trim(),
+      allowWhatsappNotifications,
+    },
+  });
 
   const recentTwin = await prisma.jobCard.findFirst({
     where: {
@@ -478,14 +472,26 @@ async function createJob(request: NextRequest) {
       jobId: job.id,
       jobNumber,
     });
+    let photos: PhotoBufferPayload[] = [];
+    let warrantyCardPhotos: PhotoBufferPayload[] = [];
+    try {
+      if (photoFiles.length > 0) {
+        photos = await readPhotoBuffers(photoFiles);
+      }
+      if (warrantyCardPhotoFiles.length > 0) {
+        warrantyCardPhotos = await readPhotoBuffers(warrantyCardPhotoFiles);
+      }
+    } catch (error) {
+      console.error("[job-create] Photo read failed", error);
+    }
     await runPostJobCreateTasks({
       jobId: job.id,
       jobNumber,
       applianceType,
       brand,
       complaint,
-      photos: photoBuffers,
-      warrantyCardPhotos: warrantyCardBuffers,
+      photos,
+      warrantyCardPhotos,
     });
   });
 
