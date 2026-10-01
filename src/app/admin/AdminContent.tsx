@@ -18,6 +18,7 @@ import { SparePartsTab } from "@/modules/spare-parts/components/SparePartsTab";
 import { isSparePartsEnabled } from "@/modules/spare-parts/enabled";
 import { SlipServiceEntry } from "@/components/SlipServiceEntry";
 import { SlipServiceReport } from "@/components/SlipServiceReport";
+import { StaffAppDownloadCard } from "@/components/StaffAppDownloadCard";
 import { reportJobsHref } from "@/lib/report-links";
 import { periodLabel, type ReportPeriod } from "@/lib/reports";
 
@@ -140,12 +141,15 @@ export default function AdminContent() {
   return (
     <AppShell>
       {tab !== "reports" && (
-        <AdminTabs
-          active={tab as AdminSettingsTab}
-          onChange={handleSettingsTabChange}
-          pendingDeviceCount={pendingDeviceCount}
-          inboxUnreadCount={inboxUnreadCount}
-        />
+        <>
+          <StaffAppDownloadCard />
+          <AdminTabs
+            active={tab as AdminSettingsTab}
+            onChange={handleSettingsTabChange}
+            pendingDeviceCount={pendingDeviceCount}
+            inboxUnreadCount={inboxUnreadCount}
+          />
+        </>
       )}
       {tab === "devices" && <DevicesTab />}
       {tab === "staff" && <StaffTab />}

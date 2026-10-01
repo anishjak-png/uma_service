@@ -51,6 +51,7 @@ resources/staff*.yaml
 /logs/
 
 *.apk
+!public/staff/*.apk
 *.aab
 android/.gradle/
 android/app/build/
