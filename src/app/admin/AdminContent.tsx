@@ -956,7 +956,7 @@ function CustomersTab() {
         </ul>
 
         {editing && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 pb-[max(1rem,var(--app-bottom-inset))] sm:items-center">
             <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-lg">
               <h3 className="mb-4 font-semibold text-slate-900">Edit Customer</h3>
               <div className="space-y-3">

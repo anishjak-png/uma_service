@@ -3,6 +3,16 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  --app-bottom-inset: env(safe-area-inset-bottom, 0px);
+}
+
+/* Capacitor WebView is edge-to-edge; many Samsungs do not report the nav inset. */
+html.native-app {
+  --app-bottom-inset: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+
+html.native-app body {
+  padding-bottom: var(--app-bottom-inset);
 }
 
 body {

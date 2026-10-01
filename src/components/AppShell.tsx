@@ -16,7 +16,7 @@ function NavFallback() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-dvh bg-slate-50">
       <div className="flex flex-1 flex-col">
         <Suspense fallback={<NavFallback />}>
           <AppNav />

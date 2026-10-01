@@ -93,7 +93,7 @@ export function DeliveryCallLogModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 p-0 pb-[var(--app-bottom-inset)] sm:items-center sm:p-4">
       <div
         className="w-full max-w-md rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
         role="dialog"
@@ -180,7 +180,7 @@ export function DeliveryCallLogModal({
           {error && <p className="text-xs text-red-600">{error}</p>}
         </div>
 
-        <div className="flex gap-2 border-t border-slate-100 px-4 py-3">
+        <div className="flex gap-2 border-t border-slate-100 px-4 pb-3 pt-3">
           <button
             type="button"
             onClick={onClose}

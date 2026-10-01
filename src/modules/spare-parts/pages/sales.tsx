@@ -246,7 +246,7 @@ export default function SparePartsSalesPage() {
         )}
       </section>
 
-      <div className="sticky bottom-0 space-y-2 bg-slate-50 pb-2 pt-1">
+      <div className="sticky bottom-0 space-y-2 bg-slate-50 pb-[calc(0.5rem+var(--app-bottom-inset))] pt-1">
         <div className="flex items-center justify-between px-1 text-lg font-semibold">
           <span>Total</span>
           <span>{formatPrice(total)}</span>
