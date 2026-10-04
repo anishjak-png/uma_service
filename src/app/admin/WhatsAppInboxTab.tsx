@@ -239,6 +239,7 @@ export function WhatsAppInboxTab({
   const [thread, setThread] = useState<ThreadData | null>(null);
   const [reply, setReply] = useState("");
   const [loadingList, setLoadingList] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -259,44 +260,53 @@ export function WhatsAppInboxTab({
     setLoadingList(false);
   }, [onUnreadChange]);
 
-  const loadThread = useCallback(
-    async (conversationId: string) => {
-      setLoadingThread(true);
-      setError("");
-      const res = await fetch(
-        `/api/admin/whatsapp/conversations/${conversationId}/messages`
+  const loadThread = useCallback(async (conversationId: string) => {
+    setLoadingThread(true);
+    setError("");
+    const res = await fetch(
+      `/api/admin/whatsapp/conversations/${conversationId}/messages`
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(
+        typeof data.error === "string"
+          ? data.error
+          : "Failed to load messages"
       );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(
-          typeof data.error === "string"
-            ? data.error
-            : "Failed to load messages"
-        );
-        setLoadingThread(false);
-        return;
-      }
-      const data = await res.json();
-      setThread(data);
       setLoadingThread(false);
+      return;
+    }
+    const data = await res.json();
+    setThread(data);
+    setLoadingThread(false);
 
-      await fetch(`/api/admin/whatsapp/conversations/${conversationId}/read`, {
-        method: "PATCH",
-      });
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === conversationId ? { ...c, unreadCount: 0 } : c
-        )
+    await fetch(`/api/admin/whatsapp/conversations/${conversationId}/read`, {
+      method: "PATCH",
+    });
+    setConversations((prev) => {
+      const next = prev.map((c) =>
+        c.id === conversationId ? { ...c, unreadCount: 0 } : c
       );
-      loadConversations();
-    },
-    [loadConversations]
-  );
+      onUnreadChange?.(next.reduce((sum, c) => sum + c.unreadCount, 0));
+      return next;
+    });
+  }, [onUnreadChange]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setError("");
+    try {
+      await loadConversations();
+      if (selectedId) {
+        await loadThread(selectedId);
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadConversations, loadThread, selectedId]);
 
   useEffect(() => {
     void loadConversations();
-    const interval = setInterval(() => void loadConversations(), 30000);
-    return () => clearInterval(interval);
   }, [loadConversations]);
 
   useEffect(() => {
@@ -305,8 +315,6 @@ export function WhatsAppInboxTab({
       return;
     }
     void loadThread(selectedId);
-    const interval = setInterval(() => void loadThread(selectedId), 30000);
-    return () => clearInterval(interval);
   }, [selectedId, loadThread]);
 
   useEffect(() => {
@@ -419,8 +427,16 @@ export function WhatsAppInboxTab({
           showChatOnMobile ? "hidden md:flex" : "flex"
         }`}
       >
-        <div className="bg-[#F0F2F5] px-4 py-3">
+        <div className="flex items-center justify-between gap-2 bg-[#F0F2F5] px-4 py-3">
           <h2 className="text-base font-semibold text-[#111B21]">Chats</h2>
+          <button
+            type="button"
+            onClick={() => void handleRefresh()}
+            disabled={refreshing || loadingList}
+            className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-[#008069] ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {loadingList ? (
@@ -532,6 +548,14 @@ export function WhatsAppInboxTab({
                   Open job
                 </Link>
               )}
+              <button
+                type="button"
+                onClick={() => void handleRefresh()}
+                disabled={refreshing}
+                className="shrink-0 rounded-md bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25 disabled:opacity-50"
+              >
+                {refreshing ? "…" : "Refresh"}
+              </button>
             </div>
 
             {/* Messages area — WhatsApp wallpaper */}

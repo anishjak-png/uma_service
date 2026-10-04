@@ -162,6 +162,13 @@ function mergeThreadMessages(
   );
 }
 
+export async function getWhatsAppUnreadTotal(): Promise<number> {
+  const result = await prisma.whatsAppConversation.aggregate({
+    _sum: { unreadCount: true },
+  });
+  return result._sum.unreadCount ?? 0;
+}
+
 export async function listWhatsAppConversations() {
   const rows = await prisma.whatsAppConversation.findMany({
     orderBy: { lastMessageAt: "desc" },
@@ -171,42 +178,61 @@ export async function listWhatsAppConversations() {
     },
   });
 
-  const enriched = await Promise.all(
-    rows.map(async (row) => {
-      let latestJob: {
-        id: string;
-        jobNumber: string;
-        status: string;
-      } | null = null;
+  const customerIds = [
+    ...new Set(
+      rows
+        .map((row) => row.customerId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
 
-      if (row.customerId) {
-        latestJob = await prisma.jobCard.findFirst({
-          where: {
-            customerId: row.customerId,
-            status: { in: ACTIVE_JOB_STATUSES },
-          },
-          orderBy: { receivedAt: "desc" },
-          select: { id: true, jobNumber: true, status: true },
+  const latestJobByCustomer = new Map<
+    string,
+    { id: string; jobNumber: string; status: string }
+  >();
+
+  if (customerIds.length > 0) {
+    const jobs = await prisma.jobCard.findMany({
+      where: {
+        customerId: { in: customerIds },
+        status: { in: ACTIVE_JOB_STATUSES },
+      },
+      orderBy: { receivedAt: "desc" },
+      select: {
+        id: true,
+        jobNumber: true,
+        status: true,
+        customerId: true,
+      },
+    });
+    for (const job of jobs) {
+      if (!latestJobByCustomer.has(job.customerId)) {
+        latestJobByCustomer.set(job.customerId, {
+          id: job.id,
+          jobNumber: job.jobNumber,
+          status: job.status,
         });
       }
+    }
+  }
 
-      return {
-        id: row.id,
-        customerMobile: row.customerMobile,
-        mobileDisplay: formatMobileDisplay(row.customerMobile),
-        customerName: row.customer?.name ?? null,
-        customerId: row.customerId,
-        lastMessageAt: row.lastMessageAt.toISOString(),
-        lastMessagePreview: row.lastMessagePreview,
-        unreadCount: row.unreadCount,
-        latestJob,
-      };
-    })
-  );
+  const conversations = rows.map((row) => ({
+    id: row.id,
+    customerMobile: row.customerMobile,
+    mobileDisplay: formatMobileDisplay(row.customerMobile),
+    customerName: row.customer?.name ?? null,
+    customerId: row.customerId,
+    lastMessageAt: row.lastMessageAt.toISOString(),
+    lastMessagePreview: row.lastMessagePreview,
+    unreadCount: row.unreadCount,
+    latestJob: row.customerId
+      ? latestJobByCustomer.get(row.customerId) ?? null
+      : null,
+  }));
 
-  const totalUnread = enriched.reduce((sum, c) => sum + c.unreadCount, 0);
+  const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
-  return { conversations: enriched, totalUnread };
+  return { conversations, totalUnread };
 }
 
 export async function getWhatsAppMessages(

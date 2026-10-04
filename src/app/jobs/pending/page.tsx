@@ -211,35 +211,21 @@ function PendingJobsContent() {
     if (!roleLoaded) return;
     if (role === "technician" && !scopeReady) return;
 
-    async function loadTabTotal(query: string, setter: (n: number) => void) {
-      const res = await fetch(`/api/jobs?${query}`);
-      const data = (await res.json().catch(() => null)) as PaginatedJobsResponse | null;
-      if (data && "total" in data) {
-        setter(data.total);
-      }
-    }
-
-    const activeQuery = new URLSearchParams({
-      active: "true",
-      page: "1",
-      limit: "1",
-    });
+    const params = new URLSearchParams();
     if (role === "technician") {
-      activeQuery.set("scope", scope);
+      params.set("scope", scope);
     }
 
-    void loadTabTotal(activeQuery.toString(), setActiveTotal);
-    // Warranty / Outsourced chips only appear on All Jobs for technicians.
-    if (!(role === "technician" && scope === "my")) {
-      void loadTabTotal(
-        "status=Outsourced&scope=all&page=1&limit=1",
-        setOutsourcedTotal
-      );
-      void loadTabTotal(
-        "warranty=true&scope=all&page=1&limit=1",
-        setWarrantyTotal
-      );
-    }
+    fetch(`/api/jobs/counts?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (typeof data.active === "number") setActiveTotal(data.active);
+        if (typeof data.outsourced === "number") {
+          setOutsourcedTotal(data.outsourced);
+        }
+        if (typeof data.warranty === "number") setWarrantyTotal(data.warranty);
+      })
+      .catch(() => {});
   }, [roleLoaded, role, scope, scopeReady]);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { unstable_cache } from "next/cache";
 import { CACHE_TTL, getCached, setCache } from "@/lib/cache";
 import {
   daysAgo,
@@ -427,21 +428,26 @@ export async function GET(request: NextRequest) {
     "summary") as ReportSection;
   const { start, end } = getPeriodRange(period);
 
-  const cacheKey = `reports:v11:${section}:${period}`;
+  const cacheKey = `reports:v12:${section}:${period}`;
   const cached = getCached<unknown>(cacheKey);
   if (cached) {
     return NextResponse.json(cached);
   }
 
-  let data: unknown;
-
-  if (section === "technicians") {
-    data = await buildTechnicianReports(period, start, end);
-  } else if (section === "brands-appliances") {
-    data = await buildBrandApplianceReports(period, start, end);
-  } else {
-    data = await buildSummary(period, start, end);
-  }
+  const revalidateSeconds = period === "today" ? 30 : 120;
+  const data = await unstable_cache(
+    async () => {
+      if (section === "technicians") {
+        return buildTechnicianReports(period, start, end);
+      }
+      if (section === "brands-appliances") {
+        return buildBrandApplianceReports(period, start, end);
+      }
+      return buildSummary(period, start, end);
+    },
+    [cacheKey],
+    { revalidate: revalidateSeconds }
+  )();
 
   const ttl =
     period === "today" ? CACHE_TTL.todayCollection : CACHE_TTL.reports;

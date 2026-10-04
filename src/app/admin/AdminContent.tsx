@@ -80,15 +80,13 @@ export default function AdminContent() {
     if (!authLoaded || role !== "admin") return;
 
     async function loadInboxUnread() {
-      const res = await fetch("/api/admin/whatsapp/conversations");
+      const res = await fetch("/api/admin/whatsapp/unread");
       if (!res.ok) return;
       const data = await res.json();
       setInboxUnreadCount(data.totalUnread ?? 0);
     }
 
     void loadInboxUnread();
-    const interval = setInterval(() => void loadInboxUnread(), 30000);
-    return () => clearInterval(interval);
   }, [authLoaded, role]);
 
   useEffect(() => {
