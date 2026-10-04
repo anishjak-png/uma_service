@@ -2,7 +2,7 @@
 
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency } from "@/lib/currency";
-import type { SlipComparison } from "@/lib/slip-service";
+import type { SlipPeriodSeries, SlipYearBucket } from "@/lib/slip-service";
 import { useEffect, useState } from "react";
 
 function changeLabel(change: number | null): { text: string; className: string } {
@@ -20,11 +20,49 @@ function changeLabel(change: number | null): { text: string; className: string }
   };
 }
 
+function daysLabel(days: number): string {
+  return `${days} day${days === 1 ? "" : "s"} entered`;
+}
+
+function YearGrid({ years }: { years: SlipYearBucket[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {years.map((row) => (
+        <StatCard
+          key={`${row.yearsAgo}-${row.from}`}
+          label={row.label}
+          value={formatCurrency(row.amount)}
+          subtext={daysLabel(row.days)}
+          valueClassName={row.yearsAgo === 0 ? "text-emerald-800" : undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PeriodBlock({ row }: { row: SlipPeriodSeries }) {
+  const change = changeLabel(row.changeVsLastYear);
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {row.label}
+      </p>
+      <YearGrid years={row.years} />
+      <p className={`text-xs font-medium ${change.className}`}>{change.text}</p>
+    </div>
+  );
+}
+
 export function SlipServiceReport() {
-  const [comparisons, setComparisons] = useState<SlipComparison[]>([]);
+  const [comparisons, setComparisons] = useState<SlipPeriodSeries[]>([]);
   const [today, setToday] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [rangeResult, setRangeResult] = useState<SlipPeriodSeries | null>(null);
+  const [rangeError, setRangeError] = useState("");
+  const [rangeLoading, setRangeLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +77,10 @@ export function SlipServiceReport() {
       }
       setToday(data.today ?? "");
       setComparisons(data.comparisons ?? []);
+      if (data.today) {
+        setFromDate((prev) => prev || data.today);
+        setToDate((prev) => prev || data.today);
+      }
       setLoading(false);
     }
     void load();
@@ -46,6 +88,26 @@ export function SlipServiceReport() {
       cancelled = true;
     };
   }, []);
+
+  async function loadRange() {
+    if (!fromDate || !toDate) {
+      setRangeError("Pick both dates");
+      return;
+    }
+    setRangeLoading(true);
+    setRangeError("");
+    const params = new URLSearchParams({ from: fromDate, to: toDate });
+    const res = await fetch(`/api/admin/reports/slip?${params}`);
+    const data = await res.json();
+    if (!res.ok) {
+      setRangeResult(null);
+      setRangeError(data.error ?? "Failed to load range");
+      setRangeLoading(false);
+      return;
+    }
+    setRangeResult(data.customRange ?? null);
+    setRangeLoading(false);
+  }
 
   if (loading) {
     return <p className="text-center text-slate-500">Loading slip report…</p>;
@@ -62,30 +124,47 @@ export function SlipServiceReport() {
         Slip service value only — not mixed with job collection. Shop date{" "}
         {today}.
       </p>
-      {comparisons.map((row) => {
-        const change = changeLabel(row.change);
-        return (
-          <div key={row.label} className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {row.label}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <StatCard
-                label={row.currentLabel}
-                value={formatCurrency(row.current.amount)}
-                subtext={`${row.current.days} day${row.current.days === 1 ? "" : "s"} entered`}
-                valueClassName="text-emerald-800"
-              />
-              <StatCard
-                label={row.previousLabel}
-                value={formatCurrency(row.previous.amount)}
-                subtext={`${row.previous.days} day${row.previous.days === 1 ? "" : "s"} entered`}
-              />
-            </div>
-            <p className={`text-xs font-medium ${change.className}`}>{change.text}</p>
-          </div>
-        );
-      })}
+      {comparisons.map((row) => (
+        <PeriodBlock key={row.id} row={row} />
+      ))}
+
+      <div className="space-y-2 border-t border-slate-200 pt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Date range
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs text-slate-600">
+            From
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-xs text-slate-600">
+            To
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadRange()}
+          disabled={rangeLoading}
+          className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+        >
+          {rangeLoading ? "Loading…" : "Show range"}
+        </button>
+        {rangeError && (
+          <p className="text-xs text-red-600">{rangeError}</p>
+        )}
+        {rangeResult && <PeriodBlock row={rangeResult} />}
+      </div>
     </div>
   );
 }

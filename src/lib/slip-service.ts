@@ -95,6 +95,54 @@ export type SlipComparison = {
   change: number | null;
 };
 
+export const SLIP_PRIOR_YEARS = 4;
+
+export type SlipYearBucket = SlipRangeTotals & {
+  yearsAgo: number;
+  label: string;
+  from: string;
+  to: string;
+};
+
+export type SlipPeriodSeries = {
+  id: string;
+  label: string;
+  years: SlipYearBucket[];
+  changeVsLastYear: number | null;
+};
+
+export function shiftYmdRange(from: string, to: string, years: number): {
+  from: string;
+  to: string;
+} {
+  return {
+    from: addYearsYmd(from, years),
+    to: addYearsYmd(to, years),
+  };
+}
+
+export function slipYearBucketLabel(fromYmd: string, yearsAgo: number): string {
+  const year = fromYmd.slice(0, 4);
+  if (yearsAgo === 0) return `This year (${year})`;
+  return year;
+}
+
+export function slipPeriodSeries(
+  id: string,
+  label: string,
+  years: SlipYearBucket[]
+): SlipPeriodSeries {
+  const current = years.find((row) => row.yearsAgo === 0);
+  const lastYear = years.find((row) => row.yearsAgo === 1);
+  return {
+    id,
+    label,
+    years,
+    changeVsLastYear:
+      current && lastYear ? pctChange(current.amount, lastYear.amount) : null,
+  };
+}
+
 export function slipComparison(
   label: string,
   currentLabel: string,
