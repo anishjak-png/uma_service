@@ -42,7 +42,9 @@ export async function GET(request: NextRequest) {
     }
 
     const lookups = await getApplianceLookups(applianceType);
-    return NextResponse.json(lookups);
+    return NextResponse.json(lookups, {
+      headers: { "Cache-Control": "private, max-age=120" },
+    });
   } catch (error) {
     console.error("GET /api/appliance-lookups failed:", error);
     return NextResponse.json(

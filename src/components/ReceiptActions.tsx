@@ -65,11 +65,30 @@ export function ReceiptActions({
   useEffect(() => {
     if (!autoPoll) return;
 
-    fetchPrintStatus();
-    const interval = setInterval(fetchPrintStatus, 1500);
-    const timeout = setTimeout(() => clearInterval(interval), 20000);
+    let stopped = false;
+    const done = (status?: string | null) =>
+      Boolean(status && status !== "Pending" && status !== "Printing");
+
+    const tick = async () => {
+      const data = await fetchPrintStatus();
+      if (done(data?.status)) stopped = true;
+    };
+
+    void tick();
+    const interval = setInterval(() => {
+      if (stopped) {
+        clearInterval(interval);
+        return;
+      }
+      void tick();
+    }, 3000);
+    const timeout = setTimeout(() => {
+      stopped = true;
+      clearInterval(interval);
+    }, 20000);
 
     return () => {
+      stopped = true;
       clearInterval(interval);
       clearTimeout(timeout);
     };

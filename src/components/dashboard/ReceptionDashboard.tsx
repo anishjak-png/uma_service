@@ -31,6 +31,7 @@ export function ReceptionDashboard({ data }: ReceptionDashboardProps) {
     <div className="space-y-3">
       <Link
         href="/jobs/new"
+        prefetch={false}
         className="block rounded-md bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
       >
         New Job

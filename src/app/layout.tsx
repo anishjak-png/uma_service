@@ -22,6 +22,8 @@ export const metadata: Metadata = {
   },
 };
 
+export const preferredRegion = "bom1";
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,

@@ -32,7 +32,7 @@ export function StatCard({
 
   if (href) {
     return (
-      <Link href={href} className="block cursor-pointer">
+      <Link href={href} prefetch={false} className="block cursor-pointer">
         {content}
       </Link>
     );

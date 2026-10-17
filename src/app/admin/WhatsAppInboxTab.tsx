@@ -543,6 +543,7 @@ export function WhatsAppInboxTab({
               {active?.latestJob && (
                 <Link
                   href={`/jobs/${active.latestJob.id}`}
+                  prefetch={false}
                   className="shrink-0 rounded-md bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25"
                 >
                   Open job
@@ -588,6 +589,7 @@ export function WhatsAppInboxTab({
                               {m.jobCard && (
                                 <Link
                                   href={`/jobs/${m.jobCard.id}`}
+                                  prefetch={false}
                                   className="mt-1 block text-center text-xs font-semibold text-[#008069] hover:underline"
                                 >
                                   {m.jobCard.jobNumber}
@@ -653,6 +655,7 @@ export function WhatsAppInboxTab({
                           {m.jobCard && (
                             <Link
                               href={`/jobs/${m.jobCard.id}`}
+                              prefetch={false}
                               className="mt-1 inline-block text-xs font-medium text-[#008069] hover:underline"
                             >
                               {m.jobCard.jobNumber}

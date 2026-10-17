@@ -153,7 +153,11 @@ export default function LoginPage() {
             New device? Admin must approve after first login.
           </p>
           <p className="mt-3 text-center text-sm">
-            <Link href="/track" className="font-medium text-emerald-700 hover:underline">
+            <Link
+              href="/track"
+              prefetch={false}
+              className="font-medium text-emerald-700 hover:underline"
+            >
               Customer? Track your job status
             </Link>
           </p>

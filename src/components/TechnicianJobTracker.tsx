@@ -97,6 +97,7 @@ export function TechnicianJobTracker({ stats }: { stats: TechnicianTrackerStats 
             <Link
               key={segment.key}
               href={segment.href}
+              prefetch={false}
               className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 transition-colors hover:bg-white"
             >
               <div className="flex items-center gap-1.5">

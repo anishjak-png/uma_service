@@ -125,7 +125,11 @@ export function JobListCard({
   return (
     <div className="rounded-md border border-slate-200 bg-white shadow-sm transition-colors hover:bg-slate-50">
       <div className="flex items-start gap-2.5 p-2.5">
-        <Link href={`/jobs/${id}`} className="min-w-0 flex-1 active:scale-[0.99]">
+        <Link
+          href={`/jobs/${id}`}
+          prefetch={false}
+          className="min-w-0 flex-1 active:scale-[0.99]"
+        >
           <div className="flex min-w-0 items-baseline gap-2">
             <span className="shrink-0 text-sm font-semibold text-slate-900">
               {jobNumber}

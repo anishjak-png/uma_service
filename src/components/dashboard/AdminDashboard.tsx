@@ -88,12 +88,14 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
         <div className="grid grid-cols-2 gap-2">
           <Link
             href="/jobs/new"
+            prefetch={false}
             className="rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             New Job
           </Link>
           <Link
             href="/jobs/delivery"
+            prefetch={false}
             className="rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             Delivery
@@ -147,6 +149,7 @@ export function AdminDashboard({ data }: AdminDashboardProps) {
 
       <Link
         href="/admin?tab=whatsapp"
+        prefetch={false}
         className="block rounded-md border border-slate-300 bg-white py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
       >
         WhatsApp Automation

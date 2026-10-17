@@ -14,7 +14,9 @@ export async function GET() {
     select: { id: true, name: true, active: true },
   });
 
-  return NextResponse.json(partners);
+  return NextResponse.json(partners, {
+    headers: { "Cache-Control": "private, max-age=60" },
+  });
 }
 
 export async function POST(request: NextRequest) {

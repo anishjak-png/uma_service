@@ -19,27 +19,43 @@ export async function GET(request: NextRequest) {
     Boolean(session.technicianId) &&
     scope !== "all";
 
-  const assigned =
-    technicianMyScope && session.technicianId
-      ? { assignedTechnicianId: session.technicianId }
-      : {};
+  if (!technicianMyScope) {
+    const groups = await prisma.jobCard.groupBy({
+      by: ["status"],
+      _count: { id: true },
+    });
+    const countOf = (statuses: readonly string[]) =>
+      groups
+        .filter((group) => statuses.includes(group.status))
+        .reduce((sum, group) => sum + group._count.id, 0);
 
-  const [active, outsourced, warranty] = await Promise.all([
+    return NextResponse.json({
+      active: countOf(ACTIVE_JOB_STATUSES),
+      outsourced: countOf(["Outsourced"]),
+      warranty: countOf(WARRANTY_JOB_STATUSES),
+    });
+  }
+
+  const [active, extras] = await Promise.all([
     prisma.jobCard.count({
       where: {
-        ...assigned,
-        status: {
-          in: technicianMyScope ? TECH_MY_BOARD_STATUSES : ACTIVE_JOB_STATUSES,
-        },
+        assignedTechnicianId: session.technicianId,
+        status: { in: TECH_MY_BOARD_STATUSES },
       },
     }),
-    prisma.jobCard.count({
-      where: { status: "Outsourced" },
-    }),
-    prisma.jobCard.count({
-      where: { status: { in: WARRANTY_JOB_STATUSES } },
+    prisma.jobCard.groupBy({
+      by: ["status"],
+      where: { status: { in: [...WARRANTY_JOB_STATUSES, "Outsourced"] } },
+      _count: { id: true },
     }),
   ]);
 
-  return NextResponse.json({ active, outsourced, warranty });
+  const extraOf = (status: string) =>
+    extras.find((group) => group.status === status)?._count.id ?? 0;
+
+  return NextResponse.json({
+    active,
+    outsourced: extraOf("Outsourced"),
+    warranty: WARRANTY_JOB_STATUSES.reduce((sum, status) => sum + extraOf(status), 0),
+  });
 }

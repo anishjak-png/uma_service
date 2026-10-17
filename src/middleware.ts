@@ -1,5 +1,10 @@
+import { getIronSession } from "iron-session";
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, isDeviceApproved } from "@/lib/session";
+import {
+  isDeviceApproved,
+  sessionOptions,
+  type SessionData,
+} from "@/lib/session";
 
 const publicPaths = ["/", "/j", "/track", "/api/auth/login", "/device-pending", "/api/webhooks/whatsapp"];
 const publicPrefixes = ["/j/", "/api/track"];
@@ -22,7 +27,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const session = await getSession();
+  // Customer/public routes do not need a session decrypt.
+  if (isPublic(pathname) && pathname !== "/") {
+    return NextResponse.next();
+  }
+
+  const response = NextResponse.next();
+  const session = await getIronSession<SessionData>(
+    request,
+    response,
+    sessionOptions
+  );
 
   if (pathname === "/" && session.isLoggedIn) {
     if (!isDeviceApproved(session)) {
@@ -88,11 +103,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons/|staff/|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|apk)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons/|staff/|manifest.json|track(?:/|$)|j(?:/|$)|api/track|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp|apk)$).*)",
   ],
 };

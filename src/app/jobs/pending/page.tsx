@@ -579,12 +579,14 @@ function PendingJobsContent() {
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Link
             href="/jobs/search"
+            prefetch={false}
             className="rounded-md border border-slate-300 bg-white py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             Search
           </Link>
           <Link
             href={jobs[0] ? `/jobs/${jobs[0].id}` : "/jobs/search"}
+            prefetch={false}
             className="rounded-md bg-emerald-600 py-2 text-center text-sm font-semibold text-white hover:bg-emerald-700"
           >
             Update Status

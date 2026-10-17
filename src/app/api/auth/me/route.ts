@@ -38,14 +38,22 @@ export async function GET() {
       });
     }
 
-    session.deviceStatus = device.status;
-    if (device.status === "approved") {
+    const lastSeenMs = device.lastSeenAt?.getTime() ?? 0;
+    const shouldTouchLastSeen =
+      device.status === "approved" &&
+      Date.now() - lastSeenMs > 5 * 60 * 1000;
+
+    if (session.deviceStatus !== device.status) {
+      session.deviceStatus = device.status;
+      await session.save();
+    }
+
+    if (shouldTouchLastSeen) {
       await prisma.staffDevice.update({
         where: { id: device.id },
         data: { lastSeenAt: new Date() },
       });
     }
-    await session.save();
   }
 
   const payload: Record<string, unknown> = {

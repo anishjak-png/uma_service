@@ -109,7 +109,7 @@ export function AppNav() {
       <header className="sticky top-0 z-40 border-b border-emerald-700 bg-emerald-900 px-3 py-2 shadow-sm">
         <div className="mx-auto max-w-lg space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <Link href={homeHref} className="min-w-0">
+            <Link href={homeHref} prefetch={false} className="min-w-0">
               <h1 className="truncate text-sm font-bold uppercase tracking-wide text-white">
                 {APP_NAME}
               </h1>
@@ -121,6 +121,7 @@ export function AppNav() {
               {(role === "reception" || role === "admin") && (
                 <Link
                   href={role === "admin" ? "/admin?tab=slip" : "/slip"}
+                  prefetch={false}
                   className="rounded-md px-2 py-1 text-xs font-medium text-emerald-200/80 transition-colors hover:bg-emerald-800 hover:text-white"
                 >
                   Slip
@@ -165,6 +166,7 @@ export function AppNav() {
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch={false}
                 className={`rounded-md px-1 py-2 text-center text-xs font-medium transition-colors ${
                   active
                     ? "bg-white text-emerald-800"
