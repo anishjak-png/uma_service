@@ -18,6 +18,7 @@ import { SparePartsTab } from "@/modules/spare-parts/components/SparePartsTab";
 import { isSparePartsEnabled } from "@/modules/spare-parts/enabled";
 import { SlipServiceEntry } from "@/components/SlipServiceEntry";
 import { SlipServiceReport } from "@/components/SlipServiceReport";
+import { TechnicianPerformanceReport } from "@/components/TechnicianPerformanceReport";
 import { StaffAppDownloadCard } from "@/components/StaffAppDownloadCard";
 import { reportJobsHref } from "@/lib/report-links";
 import { periodLabel, type ReportPeriod } from "@/lib/reports";
@@ -1103,7 +1104,7 @@ function TechStaffBarChart({
 function ReportsTab() {
   const [period, setPeriod] = useState<ReportPeriod>("today");
   const [reportSection, setReportSection] = useState<
-    "summary" | "technicians" | "brands-appliances" | "slip"
+    "summary" | "technicians" | "brands-appliances" | "slip" | "performance"
   >("summary");
   const [summary, setSummary] = useState<{
     summary: {
@@ -1255,7 +1256,7 @@ function ReportsTab() {
 
   return (
     <div className="space-y-4">
-      {reportSection !== "slip" && (
+      {reportSection !== "slip" && reportSection !== "performance" && (
       <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1">
         {(
           [
@@ -1282,11 +1283,12 @@ function ReportsTab() {
       </div>
       )}
 
-      <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+      <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1">
         {(
           [
             { id: "summary", label: "Overview" },
             { id: "technicians", label: "Technicians" },
+            { id: "performance", label: "Performance" },
             { id: "brands-appliances", label: "Brands" },
             { id: "slip", label: "Slip" },
           ] as const
@@ -1315,6 +1317,8 @@ function ReportsTab() {
       )}
 
       {reportSection === "slip" && <SlipServiceReport />}
+
+      {reportSection === "performance" && <TechnicianPerformanceReport />}
 
       {reportSection === "summary" && summary && (
         <>
