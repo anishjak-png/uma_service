@@ -12,6 +12,10 @@ import {
   pickNativePhoto,
 } from "@/lib/native-photo";
 import { compressJobPhotos } from "@/lib/compress-image";
+import {
+  fetchApplianceLookups,
+  fetchApplianceTechnicians,
+} from "@/lib/client-reference-cache";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -99,20 +103,15 @@ export default function NewJobPage() {
 
     setLookupsLoading(true);
     try {
-      const res = await fetch(
-        `/api/appliance-lookups?applianceType=${encodeURIComponent(appliance)}`
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [], accessory: [] }));
-        return;
-      }
+      const data = await fetchApplianceLookups(appliance);
       setLookupOptions((prev) => ({
         ...prev,
         brand: data.brands ?? [],
         complaint: data.complaints ?? [],
         accessory: data.accessories ?? [],
       }));
+    } catch {
+      setLookupOptions((prev) => ({ ...prev, brand: [], complaint: [], accessory: [] }));
     } finally {
       setLookupsLoading(false);
     }
@@ -149,11 +148,9 @@ export default function NewJobPage() {
   }, []);
 
   async function fetchAssignedTech(appliance: string) {
-    const res = await fetch("/api/appliance-technicians");
-    const mappings = await res.json();
+    const mappings = await fetchApplianceTechnicians();
     const match = mappings.find(
-      (m: { applianceType: string; technician: { name: string } }) =>
-        m.applianceType === appliance
+      (m) => m.applianceType === appliance
     );
     setAssignedTechName(match?.technician?.name ?? null);
   }

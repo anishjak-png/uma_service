@@ -33,6 +33,7 @@ import {
   excludeDeletedFromWhere,
   parseCreateKey,
 } from "@/lib/job-lifecycle";
+import { loadJobBoardCounts } from "@/lib/job-board-counts";
 
 export async function GET(request: NextRequest) {
   try {
@@ -126,6 +127,7 @@ async function listJobs(request: NextRequest) {
   const isMobileSearch = detectSearchQueryType(q) === "mobile";
   const pageParam = searchParams.get("page");
   const paginate = pageParam != null;
+  const includeCounts = searchParams.get("includeCounts") === "1";
   const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
   const parsedLimit = Number.parseInt(searchParams.get("limit") ?? "", 10);
   const limit = paginate
@@ -142,7 +144,7 @@ async function listJobs(request: NextRequest) {
       : [{ receivedAt: "desc" as const }];
 
   if (paginate) {
-    const [total, jobs] = await Promise.all([
+    const [total, jobs, counts] = await Promise.all([
       prisma.jobCard.count({ where }),
       prisma.jobCard.findMany({
         where,
@@ -151,6 +153,9 @@ async function listJobs(request: NextRequest) {
         skip: (page - 1) * limit,
         take: limit,
       }),
+      includeCounts
+        ? loadJobBoardCounts(session, scopeParam)
+        : Promise.resolve(null),
     ]);
 
     return NextResponse.json({
@@ -159,6 +164,7 @@ async function listJobs(request: NextRequest) {
       page,
       pageSize: limit,
       totalPages: Math.max(1, Math.ceil(total / limit)),
+      ...(counts ?? {}),
     });
   }
 

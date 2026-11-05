@@ -14,6 +14,7 @@ import {
   jobAssigneeName,
   shouldShowJobAssignee,
 } from "@/lib/job-assignee-display";
+import { fetchOutsourcePartners } from "@/lib/client-reference-cache";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -132,6 +133,7 @@ export default function SearchContent() {
   const [loading, setLoading] = useState(false);
   const { scope, setScope, ready: scopeReady } = useTechnicianJobScope();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipNextUrlSync = useRef(false);
 
   const search = useCallback(
     async (
@@ -157,6 +159,35 @@ export default function SearchContent() {
         warranty?: boolean;
       } = {}
     ) => {
+      const hasInput = Boolean(q.trim() || selectedCustomerId);
+      const hasFilter = Boolean(
+        status !== "all" ||
+          browse.technicianId ||
+          browse.applianceType ||
+          browse.brand ||
+          browse.minAgeDays ||
+          browse.active ||
+          browse.receivedPeriod ||
+          browse.deliveredPeriod ||
+          browse.readyPeriod ||
+          browse.returnedPeriod ||
+          browse.pipeline ||
+          browse.completedByTechnicianId ||
+          browse.outsourcedToId ||
+          browse.warrantyBrand ||
+          browse.warranty
+      );
+      if (!hasInput && !hasFilter) {
+        setResponse({
+          mode: "jobs",
+          searchType: "empty",
+          customer: null,
+          jobs: [],
+        });
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       const params = new URLSearchParams();
       if (selectedCustomerId) {
@@ -208,7 +239,22 @@ export default function SearchContent() {
         setLoading(false);
         return;
       }
-      setResponse(data as SearchResponse);
+      const next = data as SearchResponse;
+      setResponse(next);
+      if (
+        status === "Warranty" &&
+        !browse.warrantyBrand &&
+        next.mode === "jobs"
+      ) {
+        const brands = Array.from(
+          new Set(
+            next.jobs
+              .map((job) => job.brand)
+              .filter((brand): brand is string => Boolean(brand))
+          )
+        ).sort((a, b) => a.localeCompare(b));
+        setWarrantyBrands(brands);
+      }
       setLoading(false);
     },
     []
@@ -252,17 +298,19 @@ export default function SearchContent() {
   useEffect(() => {
     if (!roleLoaded) return;
     if (statusFilter !== "Outsourced" && !initialOutsourcedToId) return;
-    fetch("/api/outsource-partners")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setPartners(data);
-      })
+    void fetchOutsourcePartners()
+      .then(setPartners)
       .catch(() => setPartners([]));
   }, [roleLoaded, statusFilter, initialOutsourcedToId]);
 
   useEffect(() => {
     if (!roleLoaded) return;
     if (role === "technician" && !scopeReady) return;
+
+    if (skipNextUrlSync.current) {
+      skipNextUrlSync.current = false;
+      return;
+    }
 
     const nextStatus = normalizeStatusFilter(initialStatus, initialWarrantyOnly);
     setQuery(initialQ);
@@ -308,24 +356,6 @@ export default function SearchContent() {
     search,
   ]);
 
-  useEffect(() => {
-    if (statusFilter !== "Warranty") return;
-    fetch("/api/jobs/search?warranty=true")
-      .then((r) => r.json())
-      .then((data) => {
-        const list: JobResult[] = Array.isArray(data?.jobs) ? data.jobs : [];
-        const brands = Array.from(
-          new Set(
-            list
-              .map((j) => j.brand)
-              .filter((b): b is string => typeof b === "string" && b.length > 0)
-          )
-        ).sort((a, b) => a.localeCompare(b));
-        setWarrantyBrands(brands);
-      })
-      .catch(() => setWarrantyBrands([]));
-  }, [statusFilter]);
-
   function updateUrl(
     q: string,
     status: string,
@@ -362,6 +392,7 @@ export default function SearchContent() {
     if (status === "Warranty" && warrantyBrand) {
       params.set("warrantyBrand", warrantyBrand);
     }
+    skipNextUrlSync.current = true;
     router.replace(`/jobs/search?${params.toString()}`, { scroll: false });
   }
 
@@ -652,7 +683,11 @@ export default function SearchContent() {
           ))}
         </div>
       ) : jobs.length === 0 ? (
-        <p className="text-center text-sm text-slate-500">No jobs found</p>
+        <p className="text-center text-sm text-slate-500">
+          {hasActiveSearch
+            ? "No jobs found"
+            : "Type UT, mobile, or name"}
+        </p>
       ) : showSingleJob ? (
         <JobListCard {...searchCardProps(jobs[0])} />
       ) : showCustomerHistory && customer ? (

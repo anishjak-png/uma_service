@@ -213,6 +213,20 @@ async function persistInboundMessage(
   });
 }
 
+export function hasInboundWhatsAppMessages(rawBody: string): boolean {
+  try {
+    const payload = JSON.parse(rawBody) as MetaWebhookBody;
+    if (payload.object !== "whatsapp_business_account") return false;
+    return (payload.entry ?? []).some((entry) =>
+      (entry.changes ?? []).some(
+        (change) => (change.value?.messages?.length ?? 0) > 0
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function processMetaWhatsAppWebhook(
   rawBody: string
 ): Promise<void> {

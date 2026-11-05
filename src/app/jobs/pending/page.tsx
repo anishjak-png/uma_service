@@ -13,6 +13,7 @@ import {
 import { TechnicianJobTracker } from "@/components/TechnicianJobTracker";
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/components/AuthProvider";
+import { fetchOutsourcePartners } from "@/lib/client-reference-cache";
 import { ACTIVE_STATUSES } from "@/lib/constants";
 import { formatDateTime, formatDoneDatestamp } from "@/lib/jobs";
 import {
@@ -65,6 +66,9 @@ type PaginatedJobsResponse = {
   page: number;
   pageSize: number;
   totalPages: number;
+  active?: number;
+  outsourced?: number;
+  warranty?: number;
 };
 
 function parseActiveJobs(items: PendingJob[]): PendingJob[] {
@@ -144,6 +148,7 @@ function PendingJobsContent() {
       const params = new URLSearchParams({
         page: String(pageNumber),
         limit: String(JOBS_PAGE_SIZE),
+        includeCounts: "1",
       });
 
       if (filter === "Outsourced") {
@@ -183,6 +188,11 @@ function PendingJobsContent() {
         setTotal(data.total);
         setPage(data.page);
         setTotalPages(data.totalPages);
+        if (typeof data.active === "number") setActiveTotal(data.active);
+        if (typeof data.outsourced === "number") {
+          setOutsourcedTotal(data.outsourced);
+        }
+        if (typeof data.warranty === "number") setWarrantyTotal(data.warranty);
       } finally {
         setLoading(false);
       }
@@ -192,41 +202,19 @@ function PendingJobsContent() {
 
   useEffect(() => {
     if (!roleLoaded || role !== "technician") return;
+    if (scope !== "my" || statusFilter !== "all") return;
     fetch("/api/technician/stats")
       .then((r) => r.json())
       .then(setStats);
-  }, [role, roleLoaded]);
+  }, [role, roleLoaded, scope, statusFilter]);
 
   useEffect(() => {
     if (!roleLoaded) return;
-    fetch("/api/outsource-partners")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setPartners(data);
-      })
+    if (statusFilter !== "Outsourced") return;
+    void fetchOutsourcePartners()
+      .then(setPartners)
       .catch(() => setPartners([]));
-  }, [roleLoaded]);
-
-  useEffect(() => {
-    if (!roleLoaded) return;
-    if (role === "technician" && !scopeReady) return;
-
-    const params = new URLSearchParams();
-    if (role === "technician") {
-      params.set("scope", scope);
-    }
-
-    fetch(`/api/jobs/counts?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (typeof data.active === "number") setActiveTotal(data.active);
-        if (typeof data.outsourced === "number") {
-          setOutsourcedTotal(data.outsourced);
-        }
-        if (typeof data.warranty === "number") setWarrantyTotal(data.warranty);
-      })
-      .catch(() => {});
-  }, [roleLoaded, role, scope, scopeReady]);
+  }, [roleLoaded, statusFilter]);
 
   useEffect(() => {
     if (!roleLoaded) return;

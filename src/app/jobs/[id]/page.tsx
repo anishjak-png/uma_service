@@ -38,6 +38,11 @@ import {
   pickNativePhoto,
 } from "@/lib/native-photo";
 import { compressJobPhotos } from "@/lib/compress-image";
+import {
+  fetchApplianceLookups,
+  fetchOutsourcePartners,
+  fetchTechnicians,
+} from "@/lib/client-reference-cache";
 import { isDeletedStatus } from "@/lib/job-lifecycle";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
@@ -321,35 +326,27 @@ export default function JobDetailPage() {
   }, [id, router]);
 
   useEffect(() => {
-    if (role === "reception" || role === "admin" || role === "technician") {
-      fetch("/api/outsource-partners")
-        .then((r) => r.json())
-        .then((data) => {
-          if (Array.isArray(data)) setOutsourcePartners(data);
-        });
-    }
-  }, [role]);
+    if (!showOutsourceForm) return;
+    void fetchOutsourcePartners()
+      .then(setOutsourcePartners)
+      .catch(() => setOutsourcePartners([]));
+  }, [showOutsourceForm]);
 
   useEffect(() => {
-    if (!job?.applianceType) return;
-    fetch(
-      `/api/appliance-lookups?applianceType=${encodeURIComponent(job.applianceType)}`
-    )
-      .then((r) => r.json())
+    if (!editingAccessories || !job?.applianceType) return;
+    void fetchApplianceLookups(job.applianceType)
       .then((data) => {
         if (data.accessories) setAccessoryOptions(data.accessories);
-      });
-  }, [job?.applianceType]);
+      })
+      .catch(() => setAccessoryOptions([]));
+  }, [editingAccessories, job?.applianceType]);
 
   useEffect(() => {
-    if (role === "reception" || role === "admin" || role === "technician") {
-      fetch("/api/technicians")
-        .then((r) => r.json())
-        .then((data) => {
-          if (Array.isArray(data)) setTechnicians(data);
-        });
-    }
-  }, [role]);
+    if (!showReadyForm && !showAssigneeEdit && !showCompletedByEdit) return;
+    void fetchTechnicians()
+      .then(setTechnicians)
+      .catch(() => setTechnicians([]));
+  }, [showReadyForm, showAssigneeEdit, showCompletedByEdit]);
 
   useEffect(() => {
     fetchJob();

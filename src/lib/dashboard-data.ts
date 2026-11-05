@@ -1,5 +1,11 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import { sumBillSplits } from "@/lib/currency";
+
+function istDayKey() {
+  const istMs = Date.now() + (5 * 60 + 30) * 60 * 1000;
+  return new Date(istMs).toISOString().slice(0, 10);
+}
 
 function todayRange() {
   const today = new Date();
@@ -58,7 +64,7 @@ function sortReadyForPickup<T extends { jobNumber: string }>(jobs: T[]): T[] {
   );
 }
 
-export async function getReceptionDashboardData() {
+async function loadReceptionDashboardData() {
   const { today, tomorrow } = todayRange();
 
   const [todayJobs, statusGroups, readyRows] = await Promise.all([
@@ -91,7 +97,15 @@ export async function getReceptionDashboardData() {
   };
 }
 
-export async function getAdminDashboardData() {
+export async function getReceptionDashboardData() {
+  return unstable_cache(
+    loadReceptionDashboardData,
+    ["reception-dashboard", istDayKey()],
+    { revalidate: 30 }
+  )();
+}
+
+async function loadAdminDashboardData() {
   const { today, tomorrow } = todayRange();
   const { monthStart, nextMonth } = monthRange();
 
@@ -158,4 +172,12 @@ export async function getAdminDashboardData() {
       expectedDeliveryAt: j.expectedDeliveryAt?.toISOString() ?? null,
     })),
   };
+}
+
+export async function getAdminDashboardData() {
+  return unstable_cache(
+    loadAdminDashboardData,
+    ["admin-dashboard", istDayKey()],
+    { revalidate: 30 }
+  )();
 }
