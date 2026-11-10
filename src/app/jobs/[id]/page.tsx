@@ -15,6 +15,7 @@ import {
   isDeliveredTerminal,
   MAX_PRODUCT_PHOTOS,
   MAX_WARRANTY_CARD_PHOTOS,
+  PHOTO_RETENTION_DAYS,
   STATUS_LABELS,
   type JobStatusValue,
   type StaffRole,
@@ -1564,6 +1565,11 @@ export default function JobDetailPage() {
           ) : (
             <p className="text-xs text-slate-500">No product photos yet</p>
           )}
+          {job.status === "Delivered" && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              Product photos are removed {PHOTO_RETENTION_DAYS} days after delivery.
+            </p>
+          )}
           {isStaff && !isLocked && photos.length < MAX_PRODUCT_PHOTOS && (
             <div className="mt-2 space-y-1.5">
               <input
@@ -1622,6 +1628,11 @@ export default function JobDetailPage() {
               </div>
             ) : (
               <p className="text-xs text-slate-500">No warranty card photos yet</p>
+            )}
+            {job.status === "Delivered" && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Warranty card photos are removed {PHOTO_RETENTION_DAYS} days after delivery.
+              </p>
             )}
             {isStaff &&
               !isLocked &&

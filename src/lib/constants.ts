@@ -32,6 +32,8 @@ export function getAppUrl(): string {
 
 export const MAX_PRODUCT_PHOTOS = 3;
 export const MAX_WARRANTY_CARD_PHOTOS = 2;
+/** Product and warranty-card photos are removed this many days after delivery. */
+export const PHOTO_RETENTION_DAYS = 7;
 
 export const JOB_STATUSES = [
   "Pending",

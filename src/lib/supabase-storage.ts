@@ -115,3 +115,44 @@ export function isSupabaseStorageConfigured(): boolean {
     process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 }
+
+/** Object path inside the product-photo bucket, or null if this is not one of our public URLs. */
+export function storedPhotoPath(publicUrl: string): string | null {
+  if (!isSupabaseStorageConfigured()) return null;
+  const { url, bucket } = getStorageConfig();
+  const prefix = `${url.replace(/\/$/, "")}/storage/v1/object/public/${bucket}/`;
+  if (!publicUrl.startsWith(prefix)) return null;
+  const raw = publicUrl.slice(prefix.length).split("?")[0];
+  if (!raw || raw.includes("..")) return null;
+  try {
+    const path = decodeURIComponent(raw);
+    return path && !path.includes("..") ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteStoredPhotos(paths: string[]): Promise<void> {
+  const unique = [...new Set(paths.filter(Boolean))];
+  if (unique.length === 0) return;
+
+  const { url, key, bucket } = getStorageConfig();
+  const endpoint = `${url.replace(/\/$/, "")}/storage/v1/object/${bucket}`;
+
+  for (let i = 0; i < unique.length; i += 100) {
+    const batch = unique.slice(i, i + 100);
+    const res = await fetch(endpoint, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(batch),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`Photo delete failed: ${detail || res.status}`);
+    }
+  }
+}
